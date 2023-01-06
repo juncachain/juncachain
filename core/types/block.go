@@ -83,6 +83,9 @@ type Header struct {
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
 	MixDigest   common.Hash    `json:"mixHash"`
 	Nonce       BlockNonce     `json:"nonce"`
+	Validators  []byte         `json:"validators"       gencodec:"required"`
+	Validator   []byte         `json:"validator"        gencodec:"required"`
+	Penalties   []byte         `json:"penalties"        gencodec:"required"`
 
 	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
@@ -303,6 +306,8 @@ func (b *Block) TxHash() common.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() common.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+func (b *Block) Penalties() []byte        { return common.CopyBytes(b.header.Penalties) }
+func (b *Block) Validator() []byte        { return common.CopyBytes(b.header.Validator) }
 
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {

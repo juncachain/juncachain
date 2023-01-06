@@ -24,6 +24,15 @@ import (
 	"github.com/juncachain/juncachain/common/hexutil"
 )
 
+func ToHex(b []byte) string {
+	hex := Bytes2Hex(b)
+	// Prefer output of "0x0" instead of "0x"
+	if len(hex) == 0 {
+		hex = "0"
+	}
+	return "0x" + hex
+}
+
 // FromHex returns the bytes represented by the hexadecimal string s.
 // s may be prefixed with "0x".
 func FromHex(s string) []byte {

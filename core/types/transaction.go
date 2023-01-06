@@ -651,3 +651,117 @@ func copyAddressPtr(a *common.Address) *common.Address {
 	cpy := *a
 	return &cpy
 }
+
+func (tx *Transaction) IsSigningTransaction() bool {
+	if tx.To() == nil {
+		return false
+	}
+
+	if tx.To().String() != common.BlockSigners {
+		return false
+	}
+
+	method := common.ToHex(tx.Data()[0:4])
+
+	if method != common.SignMethod {
+		return false
+	}
+
+	if len(tx.Data()) != (32*2 + 4) {
+		return false
+	}
+
+	return true
+}
+
+func (tx *Transaction) IsVotingTransaction() (bool, *common.Address) {
+	if tx.To() == nil {
+		return false, nil
+	}
+	b := (tx.To().String() == common.MasternodeVotingSMC)
+
+	if !b {
+		return b, nil
+	}
+
+	method := common.ToHex(tx.Data()[0:4])
+	if b = (method == common.VoteMethod); b {
+		addr := tx.Data()[len(tx.Data())-20:]
+		m := common.BytesToAddress(addr)
+		return b, &m
+	}
+
+	if b = (method == common.UnvoteMethod); b {
+		addr := tx.Data()[len(tx.Data())-32-20 : len(tx.Data())-32]
+		m := common.BytesToAddress(addr)
+		return b, &m
+	}
+
+	if b = (method == common.ProposeMethod); b {
+		addr := tx.Data()[len(tx.Data())-20:]
+		m := common.BytesToAddress(addr)
+		return b, &m
+	}
+
+	if b = (method == common.ResignMethod); b {
+		addr := tx.Data()[len(tx.Data())-20:]
+		m := common.BytesToAddress(addr)
+		return b, &m
+	}
+
+	return b, nil
+}
+
+func (tx *Transaction) IsTomoXApplyTransaction() bool {
+	if tx.To() == nil {
+		return false
+	}
+
+	addr := common.TomoXListingSMC
+	if common.IsTestnet {
+		addr = common.TomoXListingSMCTestNet
+	}
+	if tx.To().String() != addr.String() {
+		return false
+	}
+
+	method := common.ToHex(tx.Data()[0:4])
+
+	if method != common.TomoXApplyMethod {
+		return false
+	}
+
+	// 4 bytes for function name
+	// 32 bytes for 1 parameter
+	if len(tx.Data()) != (32 + 4) {
+		return false
+	}
+	return true
+}
+
+func (tx *Transaction) IsTomoZApplyTransaction() bool {
+	if tx.To() == nil {
+		return false
+	}
+
+	addr := common.TRC21IssuerSMC
+	if common.IsTestnet {
+		addr = common.TRC21IssuerSMCTestNet
+	}
+	if tx.To().String() != addr.String() {
+		return false
+	}
+
+	method := common.ToHex(tx.Data()[0:4])
+	if method != common.TomoZApplyMethod {
+		return false
+	}
+
+	// 4 bytes for function name
+	// 32 bytes for 1 parameter
+	if len(tx.Data()) != (32 + 4) {
+		return false
+	}
+
+	return true
+}
