@@ -8,10 +8,15 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
 
-geth:
-	$(GORUN) build/ci.go install ./cmd/geth
+junca:
+	$(GORUN) build/ci.go install ./cmd/junca
 	@echo "Done building."
-	@echo "Run \"$(GOBIN)/geth\" to launch geth."
+	@echo "Run \"$(GOBIN)/junca\" to launch junca."
+
+# geth:
+# 	$(GORUN) build/ci.go install ./cmd/geth
+# 	@echo "Done building."
+# 	@echo "Run \"$(GOBIN)/geth\" to launch geth."
 
 all:
 	$(GORUN) build/ci.go install
