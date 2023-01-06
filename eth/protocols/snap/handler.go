@@ -21,15 +21,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/light"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/metrics"
+	"github.com/juncachain/juncachain/p2p"
+	"github.com/juncachain/juncachain/p2p/enode"
+	"github.com/juncachain/juncachain/p2p/enr"
+	"github.com/juncachain/juncachain/trie"
 )
 
 const (

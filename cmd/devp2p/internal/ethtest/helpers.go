@@ -24,13 +24,13 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/internal/utesting"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/rlpx"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/eth/protocols/eth"
+	"github.com/juncachain/juncachain/internal/utesting"
+	"github.com/juncachain/juncachain/p2p"
+	"github.com/juncachain/juncachain/p2p/rlpx"
 )
 
 var (

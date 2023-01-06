@@ -24,10 +24,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/params"
 )
 
 type TwoOperandTestcase struct {

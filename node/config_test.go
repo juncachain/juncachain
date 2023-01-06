@@ -23,8 +23,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/p2p"
 )
 
 // Tests that datadirs can be successfully created, be them manually configured

@@ -27,9 +27,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/rlp"
 )
 
 // The values in those tests are from the Transaction Tests

@@ -24,17 +24,17 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/ethstats"
-	"github.com/ethereum/go-ethereum/internal/debug"
-	"github.com/ethereum/go-ethereum/les"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/nat"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/eth/downloader"
+	"github.com/juncachain/juncachain/eth/ethconfig"
+	"github.com/juncachain/juncachain/ethclient"
+	"github.com/juncachain/juncachain/ethstats"
+	"github.com/juncachain/juncachain/internal/debug"
+	"github.com/juncachain/juncachain/les"
+	"github.com/juncachain/juncachain/node"
+	"github.com/juncachain/juncachain/p2p"
+	"github.com/juncachain/juncachain/p2p/nat"
+	"github.com/juncachain/juncachain/params"
 )
 
 // NodeConfig represents the collection of configuration values to fine tune the Geth

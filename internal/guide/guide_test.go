@@ -28,9 +28,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/juncachain/juncachain/accounts/keystore"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/types"
 )
 
 // Tests that the account management snippets work correctly.

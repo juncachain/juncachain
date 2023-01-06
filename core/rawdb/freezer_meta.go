@@ -20,8 +20,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/rlp"
 )
 
 const freezerVersion = 1 // The initial version tag of freezer table metadata

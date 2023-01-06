@@ -21,12 +21,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/les/downloader"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/les/downloader"
+	"github.com/juncachain/juncachain/light"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/params"
 )
 
 var errInvalidCheckpoint = errors.New("invalid advertised checkpoint")

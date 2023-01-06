@@ -24,9 +24,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/juncachain/juncachain/common/math"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/p2p/enode"
 )
 
 // node represents a host on the network.

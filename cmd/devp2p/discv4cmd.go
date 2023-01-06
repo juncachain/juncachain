@@ -22,13 +22,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v4test"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/cmd/devp2p/internal/v4test"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/internal/flags"
+	"github.com/juncachain/juncachain/p2p/discover"
+	"github.com/juncachain/juncachain/p2p/enode"
+	"github.com/juncachain/juncachain/params"
 	"github.com/urfave/cli/v2"
 )
 

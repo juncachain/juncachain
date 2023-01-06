@@ -20,11 +20,11 @@ package consensus
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/state"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/rpc"
 )
 
 // ChainHeaderReader defines a small collection of methods needed to access the local

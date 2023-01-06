@@ -23,12 +23,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/les/flowcontrol"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/juncachain/juncachain/common/mclock"
+	"github.com/juncachain/juncachain/eth/ethconfig"
+	"github.com/juncachain/juncachain/ethdb"
+	"github.com/juncachain/juncachain/les/flowcontrol"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/metrics"
 )
 
 const makeCostStats = false // make request cost statistics during operation

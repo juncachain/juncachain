@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/juncachain/juncachain/log"
 )
 
 // dashboardContent is the actual dashboard HTML content to serve up when users

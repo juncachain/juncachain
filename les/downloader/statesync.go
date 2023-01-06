@@ -21,12 +21,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/state"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/ethdb"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/trie"
 	"golang.org/x/crypto/sha3"
 )
 

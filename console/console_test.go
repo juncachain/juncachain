@@ -25,15 +25,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/console/prompt"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/internal/jsre"
-	"github.com/ethereum/go-ethereum/miner"
-	"github.com/ethereum/go-ethereum/node"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/console/prompt"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/eth"
+	"github.com/juncachain/juncachain/eth/ethconfig"
+	"github.com/juncachain/juncachain/internal/jsre"
+	"github.com/juncachain/juncachain/miner"
+	"github.com/juncachain/juncachain/node"
 )
 
 const (

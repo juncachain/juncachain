@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/console"
-	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/juncachain/juncachain/cmd/utils"
+	"github.com/juncachain/juncachain/console"
+	"github.com/juncachain/juncachain/internal/flags"
+	"github.com/juncachain/juncachain/node"
+	"github.com/juncachain/juncachain/rpc"
 	"github.com/urfave/cli/v2"
 )
 

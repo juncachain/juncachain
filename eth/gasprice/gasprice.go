@@ -22,14 +22,14 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/event"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/rpc"
 )
 
 const sampleNumber = 3 // Number of transactions sampled in a block

@@ -22,11 +22,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/tests"
+	"github.com/juncachain/juncachain/core/state"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/eth/tracers/logger"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/tests"
 
 	"github.com/urfave/cli/v2"
 )

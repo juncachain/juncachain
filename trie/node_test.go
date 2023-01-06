@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/rlp"
 )
 
 func newTestFullNode(v []byte) []interface{} {
