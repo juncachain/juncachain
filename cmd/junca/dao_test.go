@@ -79,7 +79,7 @@ var daoProForkGenesis = `{
 	}
 }`
 
-var daoGenesisHash = common.HexToHash("5e1fc79cb4ffa4739177b5408045cd5d51c6cf766133f23f7cd72ee1f8d790e0")
+var daoGenesisHash = common.HexToHash("29a4b5d743bfbda3a7461974d49c62bf23ba5df9c8b01de8256e2ac2a9ae1cd8")
 var daoGenesisForkBlock = big.NewInt(314)
 
 // TestDAOForkBlockNewChain tests that the DAO hard-fork number and the nodes support/opposition is correctly
@@ -120,14 +120,14 @@ func testDAOForkBlockNewChain(t *testing.T, test int, genesis string, expectBloc
 		runGeth(t, append(args, []string{"--exec", "2+2", "console"}...)...).WaitExit()
 	}
 	// Retrieve the DAO config flag from the database
-	path := filepath.Join(datadir, "geth", "chaindata")
+	path := filepath.Join(datadir, "junca", "chaindata")
 	db, err := rawdb.NewLevelDBDatabase(path, 0, 0, "", false)
 	if err != nil {
 		t.Fatalf("test %d: failed to open test database: %v", test, err)
 	}
 	defer db.Close()
 
-	genesisHash := common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	genesisHash := common.HexToHash("8d13370621558f4ed0da587934473c0404729f28b0ff1d50e5fdd840457a2f17")
 	if genesis != "" {
 		genesisHash = daoGenesisHash
 	}
