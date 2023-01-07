@@ -180,8 +180,12 @@ func initGenesis(ctx *cli.Context) error {
 	}
 	defer file.Close()
 
-	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
+	type config struct {
+		Genesis *core.Genesis
+	}
+
+	cfg := new(config)
+	if err := json.NewDecoder(file).Decode(cfg); err != nil {
 		utils.Fatalf("invalid genesis file: %v", err)
 	}
 	// Open and initialise both full and light databases
@@ -192,7 +196,7 @@ func initGenesis(ctx *cli.Context) error {
 		if err != nil {
 			utils.Fatalf("Failed to open database: %v", err)
 		}
-		_, hash, err := core.SetupGenesisBlock(chaindb, genesis)
+		_, hash, err := core.SetupGenesisBlock(chaindb, cfg.Genesis)
 		if err != nil {
 			utils.Fatalf("Failed to write genesis block: %v", err)
 		}
