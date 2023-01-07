@@ -27,11 +27,11 @@ import (
 
 // Genesis hashes to enforce below configs on.
 var (
-	MainnetGenesisHash = common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
-	RopstenGenesisHash = common.HexToHash("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")
-	SepoliaGenesisHash = common.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
-	RinkebyGenesisHash = common.HexToHash("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")
-	GoerliGenesisHash  = common.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
+	MainnetGenesisHash = common.HexToHash("0x8d13370621558f4ed0da587934473c0404729f28b0ff1d50e5fdd840457a2f17")
+	RopstenGenesisHash = common.HexToHash("0xdffc8ae3b45965404b4fd73ce7f0e13e822ac0fc23ce7e95b42bc5f1e57023a5")
+	SepoliaGenesisHash = common.HexToHash("0x7cd5d13c645a4ae75314cc4696d59598e1f0b3096fd937e565105e95c1367407")
+	RinkebyGenesisHash = common.HexToHash("0x41a1438e1874c0d7f7a0fc86d243e0ec937df023d8c79bb7ea84ddf11464f9b6")
+	GoerliGenesisHash  = common.HexToHash("0xa3ba26b8fcffa5e3fd441aee4a350e195c07df68131ef38c2b40b5716aaa93fc")
 	KilnGenesisHash    = common.HexToHash("0x51c7fe41be669f69c45c33a56982cbde405313342d9e2b00d7c91a7b284dd4f8")
 )
 
