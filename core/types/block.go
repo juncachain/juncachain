@@ -251,6 +251,18 @@ func CopyHeader(h *Header) *Header {
 		cpy.Extra = make([]byte, len(h.Extra))
 		copy(cpy.Extra, h.Extra)
 	}
+	if len(h.Validators) > 0 {
+		cpy.Validators = make([]byte, len(h.Validators))
+		copy(cpy.Validators, h.Validators)
+	}
+	if len(h.Validator) > 0 {
+		cpy.Validator = make([]byte, len(h.Validator))
+		copy(cpy.Validator, h.Validator)
+	}
+	if len(h.Penalties) > 0 {
+		cpy.Penalties = make([]byte, len(h.Penalties))
+		copy(cpy.Penalties, h.Penalties)
+	}
 	return &cpy
 }
 
@@ -308,6 +320,7 @@ func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
 func (b *Block) Penalties() []byte        { return common.CopyBytes(b.header.Penalties) }
 func (b *Block) Validator() []byte        { return common.CopyBytes(b.header.Validator) }
+func (b *Block) Validators() []byte       { return common.CopyBytes(b.header.Validators) }
 
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {
