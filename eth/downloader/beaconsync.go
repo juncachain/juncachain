@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/log"
 )
 
 // beaconBackfiller is the chain and state backfilling that can be commenced once

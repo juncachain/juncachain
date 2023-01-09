@@ -19,9 +19,9 @@ package state
 import (
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/metrics"
 )
 
 var (

@@ -24,11 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/state"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/eth/tracers"
+	"github.com/juncachain/juncachain/params"
 )
 
 type account struct{}

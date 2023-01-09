@@ -20,9 +20,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/state/snapshot"
+	"github.com/juncachain/juncachain/rlp"
 )
 
 // Constants to match up protocol versions and messages

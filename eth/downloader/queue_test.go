@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/trie"
 )
 
 // makeChain creates a chain of n blocks starting at and including parent.

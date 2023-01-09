@@ -26,15 +26,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/trie"
+	ethereum "github.com/juncachain/juncachain"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/state/snapshot"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/eth/protocols/eth"
+	"github.com/juncachain/juncachain/ethdb"
+	"github.com/juncachain/juncachain/event"
+	"github.com/juncachain/juncachain/trie"
 )
 
 // Reduce some of the parameters to make the tester faster.

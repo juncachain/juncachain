@@ -27,11 +27,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/eth/tracers/logger"
 )
 
 func TestState(t *testing.T) {

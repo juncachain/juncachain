@@ -22,16 +22,16 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/event"
+	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/rpc"
 )
 
 const testHead = 32

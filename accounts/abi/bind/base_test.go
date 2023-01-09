@@ -24,14 +24,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rlp"
+	ethereum "github.com/juncachain/juncachain"
+	"github.com/juncachain/juncachain/accounts/abi"
+	"github.com/juncachain/juncachain/accounts/abi/bind"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/hexutil"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/rlp"
 	"github.com/stretchr/testify/assert"
 )
 

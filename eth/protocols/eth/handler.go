@@ -21,14 +21,14 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/metrics"
+	"github.com/juncachain/juncachain/p2p"
+	"github.com/juncachain/juncachain/p2p/enode"
+	"github.com/juncachain/juncachain/p2p/enr"
+	"github.com/juncachain/juncachain/params"
 )
 
 const (

@@ -19,10 +19,10 @@ package keystore
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
+	ethereum "github.com/juncachain/juncachain"
+	"github.com/juncachain/juncachain/accounts"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/crypto"
 )
 
 // keystoreWallet implements the accounts.Wallet interface for the original

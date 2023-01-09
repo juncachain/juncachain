@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/params"
 )
 
 // Genesis block for nodes which don't care about the DAO fork (i.e. not configured)
@@ -120,7 +120,7 @@ func testDAOForkBlockNewChain(t *testing.T, test int, genesis string, expectBloc
 		runGeth(t, append(args, []string{"--exec", "2+2", "console"}...)...).WaitExit()
 	}
 	// Retrieve the DAO config flag from the database
-	path := filepath.Join(datadir, "geth", "chaindata")
+	path := filepath.Join(datadir, "junca", "chaindata")
 	db, err := rawdb.NewLevelDBDatabase(path, 0, 0, "", false)
 	if err != nil {
 		t.Fatalf("test %d: failed to open test database: %v", test, err)

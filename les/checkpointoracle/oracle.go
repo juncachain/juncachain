@@ -25,12 +25,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/contracts/checkpointoracle"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/accounts/abi/bind"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/contracts/checkpointoracle"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/params"
 )
 
 // CheckpointOracle is responsible for offering the latest stable checkpoint

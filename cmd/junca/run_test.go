@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/pkg/reexec"
-	"github.com/ethereum/go-ethereum/internal/cmdtest"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/juncachain/juncachain/internal/cmdtest"
+	"github.com/juncachain/juncachain/rpc"
 )
 
 type testgeth struct {
@@ -37,8 +37,8 @@ type testgeth struct {
 }
 
 func init() {
-	// Run the app if we've been exec'd as "geth-test" in runGeth.
-	reexec.Register("geth-test", func() {
+	// Run the app if we've been exec'd as "junca-test" in runGeth.
+	reexec.Register("junca-test", func() {
 		if err := app.Run(os.Args); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -80,7 +80,7 @@ func runGeth(t *testing.T, args ...string) *testgeth {
 
 	// Boot "geth". This actually runs the test binary but the TestMain
 	// function will prevent any tests from running.
-	tt.Run("geth-test", args...)
+	tt.Run("junca-test", args...)
 
 	return tt
 }

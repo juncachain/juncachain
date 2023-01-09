@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/light"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/accounts/abi/bind"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/light"
+	"github.com/juncachain/juncachain/params"
 )
 
 // Test light syncing which will download all headers from genesis.

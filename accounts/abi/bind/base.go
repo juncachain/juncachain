@@ -24,12 +24,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/event"
+	ethereum "github.com/juncachain/juncachain"
+	"github.com/juncachain/juncachain/accounts/abi"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/event"
 )
 
 // SignerFn is a signer function callback when a contract requires a method to

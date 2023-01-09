@@ -20,12 +20,12 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/params"
 )
 
 func ExampleGenerateChain() {

@@ -23,9 +23,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/ethdb/memorydb"
 )
 
 func newEmptySecure() *StateTrie {

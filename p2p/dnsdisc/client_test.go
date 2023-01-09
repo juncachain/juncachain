@@ -26,12 +26,12 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/internal/testlog"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/juncachain/juncachain/common/mclock"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/internal/testlog"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/p2p/enode"
+	"github.com/juncachain/juncachain/p2p/enr"
 )
 
 const (

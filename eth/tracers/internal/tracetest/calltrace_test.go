@@ -26,22 +26,22 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/tracers"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/tests"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/hexutil"
+	"github.com/juncachain/juncachain/common/math"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/core/vm"
+	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/eth/tracers"
+	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/rlp"
+	"github.com/juncachain/juncachain/tests"
 
 	// Force-load native and js packages, to trigger registration
-	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
-	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
+	_ "github.com/juncachain/juncachain/eth/tracers/js"
+	_ "github.com/juncachain/juncachain/eth/tracers/native"
 )
 
 // To generate a new callTracer test, copy paste the makeTest method below into

@@ -24,17 +24,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/bloombits"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rpc"
 	lru "github.com/hashicorp/golang-lru"
+	ethereum "github.com/juncachain/juncachain"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/core/bloombits"
+	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/ethdb"
+	"github.com/juncachain/juncachain/event"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/rpc"
 )
 
 // Config represents the configuration of the filter system.

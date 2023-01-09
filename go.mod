@@ -1,4 +1,4 @@
-module github.com/ethereum/go-ethereum
+module github.com/juncachain/juncachain
 
 go 1.17
 

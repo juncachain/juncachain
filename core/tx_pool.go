@@ -25,15 +25,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/prque"
-	"github.com/ethereum/go-ethereum/consensus/misc"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/prque"
+	"github.com/juncachain/juncachain/consensus/misc"
+	"github.com/juncachain/juncachain/core/state"
+	"github.com/juncachain/juncachain/core/types"
+	"github.com/juncachain/juncachain/event"
+	"github.com/juncachain/juncachain/log"
+	"github.com/juncachain/juncachain/metrics"
+	"github.com/juncachain/juncachain/params"
 )
 
 const (

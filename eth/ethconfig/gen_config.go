@@ -6,13 +6,13 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/gasprice"
-	"github.com/ethereum/go-ethereum/miner"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/eth/downloader"
+	"github.com/juncachain/juncachain/eth/gasprice"
+	"github.com/juncachain/juncachain/miner"
+	"github.com/juncachain/juncachain/params"
 )
 
 // MarshalTOML marshals as TOML.
