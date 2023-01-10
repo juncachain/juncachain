@@ -13,46 +13,44 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package blocksigner
+package randomize
 
 import (
-	"math/big"
-
 	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/common"
-	"github.com/juncachain/juncachain/contracts/blocksigner/contract"
+	"github.com/juncachain/juncachain/contracts/randomize/contract"
 )
 
-type BlockSigner struct {
-	*contract.BlockSignerSession
+type Randomize struct {
+	*contract.JuncaRandomizeSession
 	contractBackend bind.ContractBackend
 }
 
-func NewBlockSigner(transactOpts *bind.TransactOpts, contractAddr common.Address, contractBackend bind.ContractBackend) (*BlockSigner, error) {
-	blockSigner, err := contract.NewBlockSigner(contractAddr, contractBackend)
+func NewRandomize(transactOpts *bind.TransactOpts, contractAddr common.Address, contractBackend bind.ContractBackend) (*Randomize, error) {
+	randomize, err := contract.NewJuncaRandomize(contractAddr, contractBackend)
 	if err != nil {
 		return nil, err
 	}
 
-	return &BlockSigner{
-		&contract.BlockSignerSession{
-			Contract:     blockSigner,
+	return &Randomize{
+		&contract.JuncaRandomizeSession{
+			Contract:     randomize,
 			TransactOpts: *transactOpts,
 		},
 		contractBackend,
 	}, nil
 }
 
-func DeployBlockSigner(transactOpts *bind.TransactOpts, contractBackend bind.ContractBackend, epochNumber *big.Int) (common.Address, *BlockSigner, error) {
-	blockSignerAddr, _, _, err := contract.DeployBlockSigner(transactOpts, contractBackend, epochNumber)
+func DeployRandomize(transactOpts *bind.TransactOpts, contractBackend bind.ContractBackend) (common.Address, *Randomize, error) {
+	randomizeAddr, _, _, err := contract.DeployJuncaRandomize(transactOpts, contractBackend)
 	if err != nil {
-		return blockSignerAddr, nil, err
+		return randomizeAddr, nil, err
 	}
 
-	blockSigner, err := NewBlockSigner(transactOpts, blockSignerAddr, contractBackend)
+	randomize, err := NewRandomize(transactOpts, randomizeAddr, contractBackend)
 	if err != nil {
-		return blockSignerAddr, nil, err
+		return randomizeAddr, nil, err
 	}
 
-	return blockSignerAddr, blockSigner, nil
+	return randomizeAddr, randomize, nil
 }
