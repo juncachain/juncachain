@@ -34,6 +34,8 @@ import (
 	"github.com/juncachain/juncachain/accounts/abi/bind/backends"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/consensus/posv"
+	blockSignerContract "github.com/juncachain/juncachain/contracts/blocksigner"
+	randomizeContract "github.com/juncachain/juncachain/contracts/randomize"
 	validatorContract "github.com/juncachain/juncachain/contracts/validator"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/crypto"
@@ -155,6 +157,12 @@ func (w *wizard) makeGenesis() {
 		}
 		if err := deployValidatorContract(signers, genesis.Alloc); err != nil {
 			log.Crit("Error on deployValidatorContract", "err", err)
+		}
+		if err := deployBlockSignerContract(genesis.Config.Posv.Epoch, genesis.Alloc); err != nil {
+			log.Crit("Error on deployBlockSignerContract", "err", err)
+		}
+		if err := deployRandomizeContract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployRandomizeContract", "err", err)
 		}
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
