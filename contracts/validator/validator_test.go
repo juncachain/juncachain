@@ -160,7 +160,7 @@ func TestRewardBalance(t *testing.T) {
 		logCaps[i] = &logCap{accounts[randIndex].From.String(), randCap}
 	}
 
-	foundationAddr := common.HexToAddress(params.FoudationAddr)
+	foundationAddr := common.HexToAddress(params.JuncaFoudation)
 	totalReward := new(big.Int).SetInt64(15 * 1000)
 	rewards, err := GetRewardBalancesRate(foundationAddr, acc3Addr, totalReward, baseValidator)
 	if err != nil {

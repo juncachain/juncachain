@@ -193,6 +193,7 @@ type PoSV struct {
 	fakeDiff bool // Skip difficulty verifications
 
 	checkpoints map[uint64]MasterNodes
+	endpoint    string
 	once        sync.Once
 	client      *ethclient.Client
 }
@@ -514,6 +515,13 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
+
+	ms, err := c.masterNodes(c.lastEpoch(number))
+	if err != nil {
+		return err
+	}
+	header.Coinbase = ms.M1(c.config.Epoch, number)
+
 	// Assemble the voting snapshot to check which votes make sense
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -521,11 +529,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 	c.lock.RLock()
 
-	ms, err := c.masterNodes(c.lastEpoch(number))
-	if err != nil {
-		return err
-	}
-	header.Coinbase = ms.M1(c.config.Epoch, number)
 	if number%c.config.Epoch != 0 {
 		//// Gather all the proposals that make sense voting on
 		//addresses := make([]common.Address, 0, len(c.proposals))
@@ -557,10 +560,9 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-len(header.Extra))...)
 	}
 	header.Extra = header.Extra[:extraVanity]
-
 	if number%c.config.Epoch == 0 {
-		for _, signer := range snap.signers() {
-			header.Extra = append(header.Extra, signer[:]...)
+		for _, m := range ms {
+			header.Extra = append(header.Extra, m.Address[:]...)
 		}
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
@@ -631,14 +633,30 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return errors.New("no sealing turn, must wait for others")
 	}
 
+	// Get master nodes
+	ms, err := c.masterNodes(c.lastEpoch(number))
+	if err != nil {
+		return err
+	}
+
 	// Bail out if we're unauthorized to sign a block
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return err
 	}
 	if _, authorized := snap.Signers[signer]; !authorized {
-		return errUnauthorizedSigner
+		valid := false
+		for _, m := range ms {
+			if m.Address == signer {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return errUnauthorizedSigner
+		}
 	}
+
 	// If we're amongst the recent signers, wait for the next block
 	for seen, recent := range snap.Recents {
 		if recent == signer {
@@ -788,11 +806,12 @@ func ExtractValidatorsFromBytes(byteValidators []byte) []int64 {
 }
 
 func (c *PoSV) lastEpoch(number uint64) uint64 {
-	epoch := number - number%c.config.Epoch
-	if epoch < 0 {
-		epoch = 0
+	if number <= c.config.Epoch {
+		return 0
+	} else if number%c.config.Epoch == 0 {
+		return number - c.config.Epoch
 	}
-	return epoch
+	return number - number%c.config.Epoch
 }
 
 func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
@@ -800,7 +819,7 @@ func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
 	if ok {
 		return ms, nil
 	}
-	ms, err := c.getMasterNodesFromContract()
+	ms, err := c.getMasterNodesFromContract(epoch)
 	if err != nil {
 		return ms, err
 	}
@@ -808,10 +827,9 @@ func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
 	return ms, nil
 }
 
-func (c *PoSV) setEthClient() {
-	// todo
+func (c *PoSV) initEthClient() {
 	c.once.Do(func() {
-		client, err := ethclient.Dial("127.0.0.1:8545")
+		client, err := ethclient.Dial(c.endpoint)
 		if err != nil {
 			log.Crit("PoSV ethclient.Dial", "error", err)
 		}
@@ -819,9 +837,9 @@ func (c *PoSV) setEthClient() {
 	})
 }
 
-func (c *PoSV) getMasterNodesFromContract() (MasterNodes, error) {
+func (c *PoSV) getMasterNodesFromContract(epoch uint64) (MasterNodes, error) {
 	if c.client == nil {
-		c.setEthClient()
+		c.initEthClient()
 	}
 	var ms MasterNodes
 	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(params.JuncaValidator), c.client)
@@ -829,17 +847,22 @@ func (c *PoSV) getMasterNodesFromContract() (MasterNodes, error) {
 		return ms, err
 	}
 	opts := new(bind.CallOpts)
+	opts.BlockNumber = new(big.Int).SetUint64(epoch)
 	candidates, err := validator.GetCandidates(opts)
 	if err != nil {
 		return ms, err
 	}
 	var zeroAddress = common.Address{}
 	for _, candidate := range candidates {
+		if bytes.Equal(candidate[:], zeroAddress[:]) {
+			continue
+		}
+
 		v, err := validator.GetCandidateCap(opts, candidate)
 		if err != nil {
 			return ms, err
 		}
-		if bytes.Equal(candidate[:], zeroAddress[:]) {
+		if v.Cmp(c.config.MinStaked) < 0 {
 			continue
 		}
 		ms = append(ms, MasterNode{Address: candidate, Stake: v})
@@ -849,4 +872,8 @@ func (c *PoSV) getMasterNodesFromContract() (MasterNodes, error) {
 		log.Error("No MasterNode found. don't update M1")
 	}
 	return ms, nil
+}
+
+func (c *PoSV) SetIPCEndpoint(endpoint string) {
+	c.endpoint = endpoint
 }
