@@ -32,6 +32,7 @@ import (
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/beacon"
 	"github.com/juncachain/juncachain/consensus/clique"
+	"github.com/juncachain/juncachain/consensus/posv"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/core/bloombits"
 	"github.com/juncachain/juncachain/core/rawdb"
@@ -445,21 +446,36 @@ func (s *Ethereum) StartMining(threads int) error {
 			log.Error("Cannot start mining without etherbase", "err", err)
 			return fmt.Errorf("etherbase missing: %v", err)
 		}
-		var cli *clique.Clique
-		if c, ok := s.engine.(*clique.Clique); ok {
-			cli = c
-		} else if cl, ok := s.engine.(*beacon.Beacon); ok {
-			if c, ok := cl.InnerEngine().(*clique.Clique); ok {
-				cli = c
-			}
-		}
-		if cli != nil {
+
+		getWallet := func() (accounts.Wallet, error) {
 			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
 			if wallet == nil || err != nil {
 				log.Error("Etherbase account unavailable locally", "err", err)
+				return wallet, fmt.Errorf("signer missing: %v", err)
+			}
+			return wallet, nil
+		}
+
+		if c, ok := s.engine.(*clique.Clique); ok {
+			w, err := getWallet()
+			if err != nil {
 				return fmt.Errorf("signer missing: %v", err)
 			}
-			cli.Authorize(eb, wallet.SignData)
+			c.Authorize(eb, w.SignData)
+		} else if cl, ok := s.engine.(*beacon.Beacon); ok {
+			if c, ok := cl.InnerEngine().(*clique.Clique); ok {
+				w, err := getWallet()
+				if err != nil {
+					return fmt.Errorf("signer missing: %v", err)
+				}
+				c.Authorize(eb, w.SignData)
+			} else if c, ok := cl.InnerEngine().(*posv.PoSV); ok {
+				w, err := getWallet()
+				if err != nil {
+					return fmt.Errorf("signer missing: %v", err)
+				}
+				c.Authorize(eb, w.SignData)
+			}
 		}
 		// If mining is started, we can disable the transaction rejection mechanism
 		// introduced to speed sync times.

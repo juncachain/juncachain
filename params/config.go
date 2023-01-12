@@ -279,6 +279,8 @@ var (
 	// adding flags to the config to also have to set these fields.
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
+	AllPoSVProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, nil, &PoSVConfig{Period: 0, Epoch: 30000}}
+
 	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, false, new(EthashConfig), nil, nil}
 	TestRules       = TestChainConfig.Rules(new(big.Int), false)
 )
@@ -445,6 +447,8 @@ func (c *ChainConfig) String() string {
 		} else {
 			banner += "Consensus: Beacon (proof-of-stake), merged from Clique (proof-of-authority)\n"
 		}
+	case c.Posv != nil:
+		banner += "Consensus: PoSV (proof-of-stake voting)\n"
 	default:
 		banner += "Consensus: unknown\n"
 	}
@@ -816,8 +820,8 @@ var (
 	RewardMasterPercent     = int64(40)
 	RewardVoterPercent      = uint64(50)
 	RewardFoundationPercent = int64(10)
-	BlockSigners            = "0x0000000000000000000000000000000000000089"
-	MasternodeVotingSMC     = "0x0000000000000000000000000000000000000088"
-	RandomizeSMC            = "0x0000000000000000000000000000000000000090"
-	FoudationAddr           = "0x0000000000000000000000000000000000000068"
+	JuncaBlockSigner        = "0x000000004A756E6361426c6f636b5369676E6572" // []byte("JuncaBlockSigner")
+	JuncaValidator          = "0x0000000000004a756e636156616c696461746F72"
+	JuncaRandomize          = "0x0000000000004A756e636152616E646F6D697A65"
+	JuncaFoudation          = "0x0000000000004a756E6361466F75646174696f6E"
 )

@@ -19,30 +19,34 @@ package posv
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"math/rand"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/juncachain/juncachain/accounts"
+	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/common/hexutil"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/misc"
+	contractValidator "github.com/juncachain/juncachain/contracts/validator/contract"
 	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/crypto"
+	"github.com/juncachain/juncachain/ethclient"
 	"github.com/juncachain/juncachain/ethdb"
 	"github.com/juncachain/juncachain/log"
 	"github.com/juncachain/juncachain/params"
 	"github.com/juncachain/juncachain/rlp"
 	"github.com/juncachain/juncachain/rpc"
 	"github.com/juncachain/juncachain/trie"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -187,6 +191,10 @@ type PoSV struct {
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
+
+	checkpoints map[uint64]MasterNodes
+	once        sync.Once
+	client      *ethclient.Client
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -202,11 +210,12 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	signatures, _ := lru.NewARC(inmemorySignatures)
 
 	return &PoSV{
-		config:     &conf,
-		db:         db,
-		recents:    recents,
-		signatures: signatures,
-		proposals:  make(map[common.Address]bool),
+		config:      &conf,
+		db:          db,
+		recents:     recents,
+		signatures:  signatures,
+		proposals:   make(map[common.Address]bool),
+		checkpoints: make(map[uint64]MasterNodes),
 	}
 }
 
@@ -511,23 +520,29 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		return err
 	}
 	c.lock.RLock()
+
+	ms, err := c.masterNodes(c.lastEpoch(number))
+	if err != nil {
+		return err
+	}
+	header.Coinbase = ms.M1(c.config.Epoch, number)
 	if number%c.config.Epoch != 0 {
-		// Gather all the proposals that make sense voting on
-		addresses := make([]common.Address, 0, len(c.proposals))
-		for address, authorize := range c.proposals {
-			if snap.validVote(address, authorize) {
-				addresses = append(addresses, address)
-			}
-		}
-		// If there's pending proposals, cast a vote on them
-		if len(addresses) > 0 {
-			header.Coinbase = addresses[rand.Intn(len(addresses))]
-			if c.proposals[header.Coinbase] {
-				copy(header.Nonce[:], nonceAuthVote)
-			} else {
-				copy(header.Nonce[:], nonceDropVote)
-			}
-		}
+		//// Gather all the proposals that make sense voting on
+		//addresses := make([]common.Address, 0, len(c.proposals))
+		//for address, authorize := range c.proposals {
+		//	if snap.validVote(address, authorize) {
+		//		addresses = append(addresses, address)
+		//	}
+		//}
+		//// If there's pending proposals, cast a vote on them
+		//if len(addresses) > 0 {
+		//	header.Coinbase = addresses[rand.Intn(len(addresses))]
+		//	if c.proposals[header.Coinbase] {
+		//		copy(header.Nonce[:], nonceAuthVote)
+		//	} else {
+		//		copy(header.Nonce[:], nonceDropVote)
+		//	}
+		//}
 	}
 
 	// Copy signer protected by mutex to avoid race condition
@@ -612,6 +627,10 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
+	if header.Coinbase != signer {
+		return errors.New("no sealing turn, must wait for others")
+	}
+
 	// Bail out if we're unauthorized to sign a block
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -690,7 +709,7 @@ func (c *PoSV) SealHash(header *types.Header) common.Hash {
 	return SealHash(header)
 }
 
-// Close implements consensus.Engine. It's a noop for clique as there are no background threads.
+// Close implements consensus.Engine. It's a noop for posv as there are no background threads.
 func (c *PoSV) Close() error {
 	return nil
 }
@@ -699,8 +718,8 @@ func (c *PoSV) Close() error {
 // controlling the signer voting.
 func (c *PoSV) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 	return []rpc.API{{
-		Namespace: "clique",
-		Service:   &API{chain: chain, clique: c},
+		Namespace: "PoSV",
+		Service:   &API{chain: chain, posv: c},
 	}}
 }
 
@@ -766,4 +785,68 @@ func ExtractValidatorsFromBytes(byteValidators []byte) []int64 {
 	}
 
 	return validators
+}
+
+func (c *PoSV) lastEpoch(number uint64) uint64 {
+	epoch := number - number%c.config.Epoch
+	if epoch < 0 {
+		epoch = 0
+	}
+	return epoch
+}
+
+func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
+	ms, ok := c.checkpoints[epoch]
+	if ok {
+		return ms, nil
+	}
+	ms, err := c.getMasterNodesFromContract()
+	if err != nil {
+		return ms, err
+	}
+	c.checkpoints[epoch] = ms
+	return ms, nil
+}
+
+func (c *PoSV) setEthClient() {
+	// todo
+	c.once.Do(func() {
+		client, err := ethclient.Dial("127.0.0.1:8545")
+		if err != nil {
+			log.Crit("PoSV ethclient.Dial", "error", err)
+		}
+		c.client = client
+	})
+}
+
+func (c *PoSV) getMasterNodesFromContract() (MasterNodes, error) {
+	if c.client == nil {
+		c.setEthClient()
+	}
+	var ms MasterNodes
+	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(params.JuncaValidator), c.client)
+	if err != nil {
+		return ms, err
+	}
+	opts := new(bind.CallOpts)
+	candidates, err := validator.GetCandidates(opts)
+	if err != nil {
+		return ms, err
+	}
+	var zeroAddress = common.Address{}
+	for _, candidate := range candidates {
+		v, err := validator.GetCandidateCap(opts, candidate)
+		if err != nil {
+			return ms, err
+		}
+		if bytes.Equal(candidate[:], zeroAddress[:]) {
+			continue
+		}
+		ms = append(ms, MasterNode{Address: candidate, Stake: v})
+	}
+	sort.Sort(ms)
+	if len(ms) == 0 {
+		log.Error("No MasterNode found. don't update M1")
+	}
+	return ms, nil
 }

@@ -31,8 +31,8 @@ import (
 // API is a user facing RPC API to allow controlling the signer and voting
 // mechanisms of the proof-of-authority scheme.
 type API struct {
-	chain  consensus.ChainHeaderReader
-	clique *PoSV
+	chain consensus.ChainHeaderReader
+	posv  *PoSV
 }
 
 // GetSnapshot retrieves the state snapshot at a given block.
@@ -48,7 +48,7 @@ func (api *API) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	return api.clique.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 }
 
 // GetSnapshotAtHash retrieves the state snapshot at a given block.
@@ -57,7 +57,7 @@ func (api *API) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	return api.clique.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 }
 
 // GetSigners retrieves the list of authorized signers at the specified block.
@@ -73,7 +73,7 @@ func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	snap, err := api.clique.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -86,42 +86,42 @@ func (api *API) GetSignersAtHash(hash common.Hash) ([]common.Address, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	snap, err := api.clique.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		return nil, err
 	}
 	return snap.signers(), nil
 }
 
-// Proposals returns the current proposals the node tries to uphold and vote on.
-func (api *API) Proposals() map[common.Address]bool {
-	api.clique.lock.RLock()
-	defer api.clique.lock.RUnlock()
-
-	proposals := make(map[common.Address]bool)
-	for address, auth := range api.clique.proposals {
-		proposals[address] = auth
-	}
-	return proposals
-}
-
-// Propose injects a new authorization proposal that the signer will attempt to
-// push through.
-func (api *API) Propose(address common.Address, auth bool) {
-	api.clique.lock.Lock()
-	defer api.clique.lock.Unlock()
-
-	api.clique.proposals[address] = auth
-}
-
-// Discard drops a currently running proposal, stopping the signer from casting
-// further votes (either for or against).
-func (api *API) Discard(address common.Address) {
-	api.clique.lock.Lock()
-	defer api.clique.lock.Unlock()
-
-	delete(api.clique.proposals, address)
-}
+//// Proposals returns the current proposals the node tries to uphold and vote on.
+//func (api *API) Proposals() map[common.Address]bool {
+//	api.posv.lock.RLock()
+//	defer api.posv.lock.RUnlock()
+//
+//	proposals := make(map[common.Address]bool)
+//	for address, auth := range api.posv.proposals {
+//		proposals[address] = auth
+//	}
+//	return proposals
+//}
+//
+//// Propose injects a new authorization proposal that the signer will attempt to
+//// push through.
+//func (api *API) Propose(address common.Address, auth bool) {
+//	api.posv.lock.Lock()
+//	defer api.posv.lock.Unlock()
+//
+//	api.posv.proposals[address] = auth
+//}
+//
+//// Discard drops a currently running proposal, stopping the signer from casting
+//// further votes (either for or against).
+//func (api *API) Discard(address common.Address) {
+//	api.posv.lock.Lock()
+//	defer api.posv.lock.Unlock()
+//
+//	delete(api.posv.proposals, address)
+//}
 
 type status struct {
 	InturnPercent float64                `json:"inturnPercent"`
@@ -140,7 +140,7 @@ func (api *API) Status() (*status, error) {
 		diff      = uint64(0)
 		optimals  = 0
 	)
-	snap, err := api.clique.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (api *API) Status() (*status, error) {
 			optimals++
 		}
 		diff += h.Difficulty.Uint64()
-		sealer, err := api.clique.Author(h)
+		sealer, err := api.posv.Author(h)
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +204,7 @@ func (sb *blockNumberOrHashOrRLP) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GetSigner returns the signer for a specific clique block.
+// GetSigner returns the signer for a specific posv block.
 // Can be called with either a blocknumber, blockhash or an rlp encoded blob.
 // The RLP encoded blob can either be a block or a header.
 func (api *API) GetSigner(rlpOrBlockNr *blockNumberOrHashOrRLP) (common.Address, error) {
@@ -221,15 +221,15 @@ func (api *API) GetSigner(rlpOrBlockNr *blockNumberOrHashOrRLP) (common.Address,
 		if header == nil {
 			return common.Address{}, fmt.Errorf("missing block %v", blockNrOrHash.String())
 		}
-		return api.clique.Author(header)
+		return api.posv.Author(header)
 	}
 	block := new(types.Block)
 	if err := rlp.DecodeBytes(rlpOrBlockNr.RLP, block); err == nil {
-		return api.clique.Author(block.Header())
+		return api.posv.Author(block.Header())
 	}
 	header := new(types.Header)
 	if err := rlp.DecodeBytes(rlpOrBlockNr.RLP, header); err != nil {
 		return common.Address{}, err
 	}
-	return api.clique.Author(header)
+	return api.posv.Author(header)
 }

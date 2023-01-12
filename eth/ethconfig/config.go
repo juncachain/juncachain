@@ -30,6 +30,7 @@ import (
 	"github.com/juncachain/juncachain/consensus/beacon"
 	"github.com/juncachain/juncachain/consensus/clique"
 	"github.com/juncachain/juncachain/consensus/ethash"
+	"github.com/juncachain/juncachain/consensus/posv"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/eth/downloader"
 	"github.com/juncachain/juncachain/eth/gasprice"
@@ -222,6 +223,8 @@ func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, co
 	var engine consensus.Engine
 	if chainConfig.Clique != nil {
 		engine = clique.New(chainConfig.Clique, db)
+	} else if chainConfig.Posv != nil {
+		engine = posv.New(chainConfig.Posv, db)
 	} else {
 		switch config.PowMode {
 		case ethash.ModeFake:

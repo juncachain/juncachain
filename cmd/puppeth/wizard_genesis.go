@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,12 +27,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
+	"github.com/juncachain/juncachain/accounts/abi/bind"
+	"github.com/juncachain/juncachain/accounts/abi/bind/backends"
 	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/posv"
+	validatorContract "github.com/juncachain/juncachain/contracts/validator"
 	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/crypto"
 	"github.com/juncachain/juncachain/log"
 	"github.com/juncachain/juncachain/params"
+	"github.com/juncachain/juncachain/rlp"
 )
 
 // makeGenesis creates a new genesis struct based on some user input.
@@ -58,6 +66,7 @@ func (w *wizard) makeGenesis() {
 	fmt.Println("Which consensus engine to use? (default = clique)")
 	fmt.Println(" 1. Ethash - proof-of-work")
 	fmt.Println(" 2. Clique - proof-of-authority")
+	fmt.Println(" 3. PoSV   - proof-of-stake voting")
 
 	choice := w.read()
 	switch {
@@ -103,7 +112,50 @@ func (w *wizard) makeGenesis() {
 		for i, signer := range signers {
 			copy(genesis.ExtraData[32+i*common.AddressLength:], signer[:])
 		}
+	case choice == "3":
+		// In the case of posv, configure the consensus parameters
+		genesis.Difficulty = big.NewInt(1)
+		genesis.Config.Posv = &params.PoSVConfig{
+			Period: 2,
+			Epoch:  900,
+		}
+		fmt.Println()
+		fmt.Println("How many seconds should blocks take? (default = 2)")
+		genesis.Config.Posv.Period = uint64(w.readDefaultInt(2))
 
+		// We also need the initial list of signers
+		fmt.Println()
+		fmt.Println("Which accounts are allowed to seal? (mandatory at least one)")
+
+		var signers posv.MasterNodes
+		for {
+			if address := w.readAddress(); address != nil {
+				signers = append(signers, posv.MasterNode{
+					Address: *address,
+					Stake:   big.NewInt(0),
+				})
+				continue
+			}
+			if len(signers) > 0 {
+				break
+			}
+		}
+		// Sort the signers and embed into the extra-data section
+		//for i := 0; i < len(signers); i++ {
+		//	for j := i + 1; j < len(signers); j++ {
+		//		if bytes.Compare(signers[i][:], signers[j][:]) > 0 {
+		//			signers[i], signers[j] = signers[j], signers[i]
+		//		}
+		//	}
+		//}
+		sort.Sort(signers)
+		genesis.ExtraData = make([]byte, 32+len(signers)*common.AddressLength+65)
+		for i, signer := range signers {
+			copy(genesis.ExtraData[32+i*common.AddressLength:], signer.Address[:])
+		}
+		if err := deployValidatorContract(signers, genesis.Alloc); err != nil {
+			log.Crit("Error on deployValidatorContract", "err", err)
+		}
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
 	}
@@ -282,4 +334,65 @@ func (w *wizard) manageGenesis() {
 		log.Error("That's not something I can do")
 		return
 	}
+}
+
+func deployValidatorContract(masters posv.MasterNodes, genesisAlloc core.GenesisAlloc) error {
+	if len(masters) == 0 {
+		return nil
+	}
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: big.NewInt(100000000000000000)}}, 10000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
+	transactOpts.GasPrice = gasPrice
+
+	validatorCap := new(big.Int)
+	validatorCap.SetString("50000000000000000000000", 10)
+	var validatorCaps []*big.Int
+	var signers []common.Address
+	for i := 0; i < len(masters); i++ {
+		validatorCaps = append(validatorCaps, validatorCap)
+		signers = append(signers, masters[i].Address)
+	}
+	validatorAddress, _, err := validatorContract.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
+	if err != nil {
+		log.Error("Can't deploy root registry", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		decode := []byte{}
+		trim := bytes.TrimLeft(val.Bytes(), "\x00")
+		_ = rlp.DecodeBytes(trim, &decode)
+		storage[key] = common.BytesToHash(decode)
+		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, validatorAddress, nil)
+
+	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(validatorAddress, f); err != nil {
+		log.Error("can't foreach validator", "validatorAddress", validatorAddress.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(params.JuncaValidator)] = core.GenesisAccount{
+		Balance: validatorCap.Mul(validatorCap, big.NewInt(int64(len(validatorCaps)))),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
 }
