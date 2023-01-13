@@ -19,6 +19,7 @@ package posv
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/big"
@@ -60,13 +61,14 @@ const (
 	M2ByteLength = 4
 )
 
-// PoSV Proof-of-Stake Voting protocol constants.
-var (
-	epochLength = uint64(30000) // Default number of blocks after which to checkpoint and reset the pending votes
-
+const (
+	epochLength = uint64(900)            // Default number of blocks after which to checkpoint and reset the pending votes
 	extraVanity = 32                     // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal   = crypto.SignatureLength // Fixed number of extra-data suffix bytes reserved for signer seal
+)
 
+// PoSV Proof-of-Stake Voting protocol constants.
+var (
 	nonceAuthVote = hexutil.MustDecode("0xffffffffffffffff") // Magic nonce number to vote on adding a new signer
 	nonceDropVote = hexutil.MustDecode("0x0000000000000000") // Magic nonce number to vote on removing a signer.
 
@@ -192,10 +194,11 @@ type PoSV struct {
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
 
-	checkpoints map[uint64]MasterNodes
-	endpoint    string
-	once        sync.Once
-	client      *ethclient.Client
+	checkpoints *lru.ARCCache
+
+	endpoint string
+	once     sync.Once
+	client   *ethclient.Client
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -209,6 +212,7 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	// Allocate the snapshot caches and create the engine
 	recents, _ := lru.NewARC(inmemorySnapshots)
 	signatures, _ := lru.NewARC(inmemorySignatures)
+	checkpoints, _ := lru.NewARC(inmemorySignatures)
 
 	return &PoSV{
 		config:      &conf,
@@ -216,7 +220,7 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 		recents:     recents,
 		signatures:  signatures,
 		proposals:   make(map[common.Address]bool),
-		checkpoints: make(map[uint64]MasterNodes),
+		checkpoints: checkpoints,
 	}
 }
 
@@ -290,7 +294,7 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	if !checkpoint && signersBytes != 0 {
 		return errExtraSigners
 	}
-	if checkpoint && signersBytes%common.AddressLength != 0 {
+	if checkpoint && signersBytes == 0 {
 		return errInvalidCheckpointSigners
 	}
 	// Ensure that the mix digest is zero as we don't have fork protection currently
@@ -365,12 +369,11 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 	}
 	// If the block is a checkpoint block, verify the signer list
 	if number%c.config.Epoch == 0 {
-		signers := make([]byte, len(snap.Signers)*common.AddressLength)
-		for i, signer := range snap.signers() {
-			copy(signers[i*common.AddressLength:], signer[:])
+		var extra Extra
+		if err := extra.FromBytes(header.Extra); err != nil {
+			return err
 		}
-		extraSuffix := len(header.Extra) - extraSeal
-		if !bytes.Equal(header.Extra[extraVanity:extraSuffix], signers) {
+		if len(snap.signers()) != len(extra.Epoch.Validators) {
 			return errMismatchingCheckpointSigners
 		}
 	}
@@ -407,11 +410,15 @@ func (c *PoSV) snapshot(chain consensus.ChainHeaderReader, number uint64, hash c
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				hash := checkpoint.Hash()
-
-				signers := make([]common.Address, (len(checkpoint.Extra)-extraVanity-extraSeal)/common.AddressLength)
-				for i := 0; i < len(signers); i++ {
-					copy(signers[i][:], checkpoint.Extra[extraVanity+i*common.AddressLength:])
+				var extra Extra
+				if err := extra.FromBytes(checkpoint.Extra); err != nil {
+					return nil, err
 				}
+				signers := make([]common.Address, len(extra.Epoch.Validators))
+				for i, _ := range extra.Epoch.Validators {
+					copy(signers[i][:], extra.Epoch.Validators[i][:])
+				}
+
 				snap = newSnapshot(c.config, c.signatures, number, hash, signers)
 				if err := snap.store(c.db); err != nil {
 					return nil, err
@@ -516,36 +523,20 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 
 	number := header.Number.Uint64()
 
-	ms, err := c.masterNodes(c.lastEpoch(number))
+	// Assemble the voting snapshot to check which votes make sense
+	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return err
 	}
-	header.Coinbase = ms.M1(c.config.Epoch, number)
-
-	// Assemble the voting snapshot to check which votes make sense
-	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
+	extra, err := c.extra(chain, c.lastEpoch(number))
 	if err != nil {
 		return err
 	}
 	c.lock.RLock()
 
 	if number%c.config.Epoch != 0 {
-		//// Gather all the proposals that make sense voting on
-		//addresses := make([]common.Address, 0, len(c.proposals))
-		//for address, authorize := range c.proposals {
-		//	if snap.validVote(address, authorize) {
-		//		addresses = append(addresses, address)
-		//	}
-		//}
-		//// If there's pending proposals, cast a vote on them
-		//if len(addresses) > 0 {
-		//	header.Coinbase = addresses[rand.Intn(len(addresses))]
-		//	if c.proposals[header.Coinbase] {
-		//		copy(header.Nonce[:], nonceAuthVote)
-		//	} else {
-		//		copy(header.Nonce[:], nonceDropVote)
-		//	}
-		//}
+		header.Coinbase = extra.Epoch.Validator(c.config.Epoch, number)
+		copy(header.Nonce[:], nonceAuthVote)
 	}
 
 	// Copy signer protected by mutex to avoid race condition
@@ -561,9 +552,11 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 	header.Extra = header.Extra[:extraVanity]
 	if number%c.config.Epoch == 0 {
-		for _, m := range ms {
-			header.Extra = append(header.Extra, m.Address[:]...)
+		nextEpochExtra, err := c.nextExtra(number)
+		if err != nil {
+			return err
 		}
+		header.Extra = append(header.Extra, nextEpochExtra.Epoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -634,7 +627,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	}
 
 	// Get master nodes
-	ms, err := c.masterNodes(c.lastEpoch(number))
+	extra, err := c.extra(chain, c.lastEpoch(number))
 	if err != nil {
 		return err
 	}
@@ -646,8 +639,8 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	}
 	if _, authorized := snap.Signers[signer]; !authorized {
 		valid := false
-		for _, m := range ms {
-			if m.Address == signer {
+		for _, m := range extra.Epoch.Validators {
+			if m == signer {
 				valid = true
 				break
 			}
@@ -814,32 +807,73 @@ func (c *PoSV) lastEpoch(number uint64) uint64 {
 	return number - number%c.config.Epoch
 }
 
-func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
-	ms, ok := c.checkpoints[epoch]
+func (c *PoSV) extra(chain consensus.ChainHeaderReader, epoch uint64) (*Extra, error) {
+	v, ok := c.checkpoints.Get(epoch)
 	if ok {
-		return ms, nil
+		return v.(*Extra), nil
 	}
-	ms, err := c.getMasterNodesFromContract(epoch)
-	if err != nil {
-		return ms, err
+
+	header := chain.GetHeaderByNumber(epoch)
+	if header != nil {
+		extra := new(Extra)
+		if err := extra.FromBytes(header.Extra); err != nil {
+			return nil, err
+		}
+		c.checkpoints.Add(epoch, extra)
+		return extra, nil
 	}
-	c.checkpoints[epoch] = ms
-	return ms, nil
+	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) initEthClient() {
+func (c *PoSV) nextExtra(number uint64) (*Extra, error) {
+	ms, err := c.getValidatorsFromContract(number - 2)
+	if err != nil {
+		return nil, err
+	}
+	extra := new(Extra)
+	for _, v := range ms {
+		extra.Epoch.Validators = append(extra.Epoch.Validators, v.Address)
+	}
+	c.checkpoints.Add(number, extra)
+	return extra, nil
+}
+
+func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
+	c.checkpoints.Add(epoch, extra)
+}
+
+func (c *PoSV) Config() *params.PoSVConfig {
+	return c.config
+}
+
+func (c *PoSV) SetIPCEndpoint(endpoint string) {
+	c.endpoint = endpoint
+}
+
+func (c *PoSV) initClient() {
 	c.once.Do(func() {
-		client, err := ethclient.Dial(c.endpoint)
-		if err != nil {
-			log.Crit("PoSV ethclient.Dial", "error", err)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Crit("PoSV init ethclient timeout")
+			default:
+				cli, err := ethclient.Dial(c.endpoint)
+				if err != nil {
+					log.Warn("PoSV ethclient.Dial", "err", err)
+					continue
+				}
+				c.client = cli
+				return
+			}
 		}
-		c.client = client
 	})
 }
 
-func (c *PoSV) getMasterNodesFromContract(epoch uint64) (MasterNodes, error) {
+func (c *PoSV) getValidatorsFromContract(number uint64) (MasterNodes, error) {
 	if c.client == nil {
-		c.initEthClient()
+		c.initClient()
 	}
 	var ms MasterNodes
 	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(params.JuncaValidator), c.client)
@@ -847,7 +881,7 @@ func (c *PoSV) getMasterNodesFromContract(epoch uint64) (MasterNodes, error) {
 		return ms, err
 	}
 	opts := new(bind.CallOpts)
-	opts.BlockNumber = new(big.Int).SetUint64(epoch)
+	opts.BlockNumber = new(big.Int).SetUint64(number)
 	candidates, err := validator.GetCandidates(opts)
 	if err != nil {
 		return ms, err
@@ -872,8 +906,4 @@ func (c *PoSV) getMasterNodesFromContract(epoch uint64) (MasterNodes, error) {
 		log.Error("No MasterNode found. don't update M1")
 	}
 	return ms, nil
-}
-
-func (c *PoSV) SetIPCEndpoint(endpoint string) {
-	c.endpoint = endpoint
 }

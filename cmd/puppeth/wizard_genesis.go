@@ -148,19 +148,15 @@ func (w *wizard) makeGenesis() {
 				break
 			}
 		}
-		// Sort the signers and embed into the extra-data section
-		//for i := 0; i < len(signers); i++ {
-		//	for j := i + 1; j < len(signers); j++ {
-		//		if bytes.Compare(signers[i][:], signers[j][:]) > 0 {
-		//			signers[i], signers[j] = signers[j], signers[i]
-		//		}
-		//	}
-		//}
 		sort.Sort(signers)
-		genesis.ExtraData = make([]byte, 32+len(signers)*common.AddressLength+65)
-		for i, signer := range signers {
-			copy(genesis.ExtraData[32+i*common.AddressLength:], signer.Address[:])
+		var extra posv.Extra
+		for _, v := range signers {
+			extra.Epoch.Validators = append(extra.Epoch.Validators, v.Address)
 		}
+		b := extra.ToBytes()
+		genesis.ExtraData = make([]byte, len(b))
+		copy(genesis.ExtraData, b)
+
 		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, genesis.Alloc); err != nil {
 			log.Crit("Error on deployValidatorContract", "err", err)
 		}
