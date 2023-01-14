@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"math/big"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
@@ -33,6 +35,7 @@ import (
 	"github.com/juncachain/juncachain/consensus/beacon"
 	"github.com/juncachain/juncachain/consensus/clique"
 	"github.com/juncachain/juncachain/consensus/posv"
+	"github.com/juncachain/juncachain/contracts"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/core/bloombits"
 	"github.com/juncachain/juncachain/core/rawdb"
@@ -44,6 +47,7 @@ import (
 	"github.com/juncachain/juncachain/eth/gasprice"
 	"github.com/juncachain/juncachain/eth/protocols/eth"
 	"github.com/juncachain/juncachain/eth/protocols/snap"
+	"github.com/juncachain/juncachain/ethclient"
 	"github.com/juncachain/juncachain/ethdb"
 	"github.com/juncachain/juncachain/event"
 	"github.com/juncachain/juncachain/internal/ethapi"
@@ -100,6 +104,9 @@ type Ethereum struct {
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
+
+	IPCEndpoint string
+	client      *ethclient.Client // Global ipc client instance.
 }
 
 // New creates a new Ethereum object (including the
@@ -275,6 +282,97 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Successful startup; push a marker and check previous unclean shutdowns.
 	eth.shutdownTracker.MarkStartup()
 
+	// for PoSV
+	if chainConfig.Posv != nil {
+		c := eth.engine.(*posv.PoSV)
+
+		eth.TxPool().IsSigner = func(address common.Address) bool {
+			currentHeader := eth.blockchain.CurrentHeader()
+			header := currentHeader
+			// Sometimes, the latest block hasn't been inserted to chain yet
+			// getSnapshot from parent block if it exists
+			parentHeader := eth.blockchain.GetHeader(currentHeader.ParentHash, currentHeader.Number.Uint64()-1)
+			if parentHeader != nil {
+				// not genesis block
+				header = parentHeader
+			}
+			snap, err := c.GetSnapshot(eth.blockchain, header)
+			if err != nil {
+				log.Error("Can't get snapshot with at ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
+				return false
+			}
+			if _, ok := snap.Signers[address]; ok {
+				return true
+			}
+			return false
+		}
+
+		c.HookValidator = func(header *types.Header, signers []common.Address) ([]byte, error) {
+			start := time.Now()
+			client, err := eth.GetClient()
+			if err != nil {
+				return nil, err
+			}
+			validators, err := contracts.GetValidators(client, signers)
+			if err != nil {
+				return nil, err
+			}
+			log.Debug("Time Calculated HookValidator ", "block", header.Number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
+			return validators, nil
+		}
+
+		c.HookGetSigners = func(number *big.Int) ([]common.Address, error) {
+			client, err := eth.GetClient()
+			if err != nil {
+				return nil, err
+			}
+
+			candidates, err := contracts.GetCandidates(client, number)
+			if err != nil {
+				return nil, err
+			}
+
+			var (
+				masternodes []posv.MasterNode
+			)
+			for k, v := range candidates {
+				masternodes = append(masternodes, posv.MasterNode{
+					Address: k,
+					Stake:   v,
+				})
+			}
+			// sort candidates by stake descending
+			sort.Slice(masternodes, func(i, j int) bool {
+				return masternodes[i].Stake.Cmp(masternodes[j].Stake) >= 0
+			})
+			if len(masternodes) > common.MaxMasternodes {
+				masternodes = masternodes[:common.MaxMasternodes]
+			}
+			var result = make([]common.Address, 0)
+			for _, m := range masternodes {
+				result = append(result, m.Address)
+			}
+			return result, nil
+		}
+
+		c.HookBlockSign = func(block *types.Block) error {
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for append m2 header", "err", err)
+				return fmt.Errorf("etherbase missing: %v", err)
+			}
+			ok := eth.txPool.IsSigner != nil && eth.txPool.IsSigner(eb)
+			if !ok {
+				return nil
+			}
+			if block.NumberU64()%common.MergeSignRange == 0 {
+				if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, block, chainDb, eb); err != nil {
+					return fmt.Errorf("Fail to create tx sign for importing block: %v", err)
+				}
+			}
+			return nil
+		}
+	}
 	return eth, nil
 }
 
@@ -578,4 +676,18 @@ func (s *Ethereum) Stop() error {
 	s.eventMux.Stop()
 
 	return nil
+}
+
+func (s *Ethereum) GetClient() (*ethclient.Client, error) {
+	if s.client == nil {
+		// Inject ipc client global instance.
+		client, err := ethclient.Dial(s.IPCEndpoint)
+		if err != nil {
+			log.Error("Fail to connect IPC", "error", err)
+			return nil, err
+		}
+		s.client = client
+	}
+
+	return s.client, nil
 }

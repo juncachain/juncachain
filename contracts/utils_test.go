@@ -81,7 +81,7 @@ func TestSendTxSign(t *testing.T) {
 	oldBlocks := make(map[common.Hash]common.Address)
 
 	signTx := func(ctx context.Context, backend *backends.SimulatedBackend, signer types.Signer, nonces map[*ecdsa.PrivateKey]int, accKey *ecdsa.PrivateKey, blockNumber *big.Int, blockHash common.Hash) *types.Transaction {
-		tx, err := types.SignTx(CreateTxSign(blockNumber, blockHash, uint64(nonces[accKey]), gasPrice, blockSignerAddr), signer, accKey)
+		tx, err := types.SignTx(BuildTxSignBlockSigner(blockNumber, blockHash, uint64(nonces[accKey]), gasPrice, blockSignerAddr), signer, accKey)
 		if err != nil {
 			t.Fatalf("Can't sign tx: %v", err)
 		}

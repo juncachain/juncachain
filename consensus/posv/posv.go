@@ -199,6 +199,14 @@ type PoSV struct {
 	endpoint string
 	once     sync.Once
 	client   *ethclient.Client
+
+	HookGetSigners          func(number *big.Int) ([]common.Address, error)
+	HookValidator           func(header *types.Header, signers []common.Address) ([]byte, error)
+	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
+	HookReward              func(chain consensus.ChainReader, state *state.StateDB, parentState *state.StateDB, header *types.Header) (error, map[string]interface{})
+	HookBlockSign           func(block *types.Block) error
+	HookSetRandomizeSecret  func(block *types.Block) error
+	HookSetRandomizeOpening func(block *types.Block) error
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -622,9 +630,9 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
-	if header.Coinbase != signer {
-		return errors.New("no sealing turn, must wait for others")
-	}
+	//if header.Coinbase != signer {
+	//	return errors.New("no sealing turn, must wait for others")
+	//}
 
 	// Get master nodes
 	extra, err := c.extra(chain, c.lastEpoch(number))
@@ -876,7 +884,7 @@ func (c *PoSV) getValidatorsFromContract(number uint64) (MasterNodes, error) {
 		c.initClient()
 	}
 	var ms MasterNodes
-	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(params.JuncaValidator), c.client)
+	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(common.MasternodeVotingSMC), c.client)
 	if err != nil {
 		return ms, err
 	}
@@ -906,4 +914,18 @@ func (c *PoSV) getValidatorsFromContract(number uint64) (MasterNodes, error) {
 		log.Error("No MasterNode found. don't update M1")
 	}
 	return ms, nil
+}
+
+func (c *PoSV) GetSnapshot(chain consensus.ChainReader, header *types.Header) (*Snapshot, error) {
+	number := header.Number.Uint64()
+	log.Trace("take snapshot", "number", number, "hash", header.Hash())
+	snap, err := c.snapshot(chain, number, header.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return snap, nil
+}
+
+func (c *PoSV) SignFunc() SignerFn {
+	return c.signFn
 }

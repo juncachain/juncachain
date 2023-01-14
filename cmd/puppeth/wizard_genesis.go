@@ -397,7 +397,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 		return err
 	}
 
-	genesisAlloc[common.HexToAddress(params.JuncaValidator)] = core.GenesisAccount{
+	genesisAlloc[common.HexToAddress(common.MasternodeVotingSMC)] = core.GenesisAccount{
 		Balance: stakeCap.Mul(stakeCap, big.NewInt(int64(len(validatorCaps)))),
 		Code:    code,
 		Storage: storage,
@@ -447,7 +447,7 @@ func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAllo
 		return err
 	}
 
-	genesisAlloc[common.HexToAddress(params.JuncaBlockSigner)] = core.GenesisAccount{
+	genesisAlloc[common.HexToAddress(common.BlockSignerSMC)] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 		Code:    code,
 		Storage: storage,
@@ -497,7 +497,7 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 		return err
 	}
 
-	genesisAlloc[common.HexToAddress(params.JuncaRandomize)] = core.GenesisAccount{
+	genesisAlloc[common.HexToAddress(common.RandomizeSMC)] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 		Code:    code,
 		Storage: storage,
