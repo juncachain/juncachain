@@ -128,6 +128,10 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Posv.Period = uint64(w.readDefaultInt(2))
 
 		fmt.Println()
+		fmt.Println("How many blocks each an epoch? (default = 900)")
+		genesis.Config.Posv.Epoch = uint64(w.readDefaultInt(900))
+
+		fmt.Println()
 		fmt.Println("How many min tokens should be staked? (default = 50000)")
 		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), base)
 
@@ -150,8 +154,16 @@ func (w *wizard) makeGenesis() {
 		}
 		sort.Sort(signers)
 		var extra posv.Extra
+		extra.Epoch.Checkpoint = 0
 		for _, v := range signers {
-			extra.Epoch.Validators = append(extra.Epoch.Validators, v.Address)
+			extra.Epoch.MasterNodes = append(extra.Epoch.Validators, posv.MasterNode{
+				Address: v.Address,
+				Stake:   genesis.Config.Posv.MinStaked,
+			})
+			extra.Epoch.Validators = append(extra.Epoch.Validators, posv.MasterNode{
+				Address: v.Address,
+				Stake:   genesis.Config.Posv.MinStaked,
+			})
 		}
 		b := extra.ToBytes()
 		genesis.ExtraData = make([]byte, len(b))

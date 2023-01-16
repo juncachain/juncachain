@@ -1,12 +1,48 @@
 package posv
 
 import (
+	"bytes"
 	"errors"
+	"math/big"
 
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/log"
 	"github.com/juncachain/juncachain/rlp"
 )
+
+type MasterNode struct {
+	Address common.Address
+	Stake   *big.Int
+}
+
+type MasterNodes []MasterNode
+
+func (ms MasterNodes) Len() int {
+	return len(ms)
+}
+
+func (ms MasterNodes) Less(i, j int) bool {
+	if ms[i].Stake.Cmp(ms[i].Stake) > 0 {
+		return true
+	}
+	return bytes.Compare(ms[i].Address[:], ms[j].Address[:]) > 0
+}
+
+func (ms MasterNodes) Swap(i, j int) {
+	ms[i], ms[j] = ms[j], ms[i]
+}
+
+func (ms MasterNodes) M1(epochLength uint64, number uint64) common.Address {
+	if len(ms) == 0 {
+		return common.Address{}
+	}
+	mod := number % epochLength
+	var index = 0
+	if mod != 0 {
+		index = int(mod) % len(ms)
+	}
+	return ms[index].Address
+}
 
 type Extra struct {
 	Vanity    [extraVanity]byte `json:"vanity"`
@@ -36,8 +72,10 @@ func (e *Extra) ToBytes() []byte {
 }
 
 type Epoch struct {
-	Validators []common.Address `json:"validators"`
-	Penalties  []common.Address `json:"penalties"`
+	Checkpoint  uint64           `json:"checkpoint"`
+	MasterNodes MasterNodes      `json:"masterNodes"` // max 150
+	Validators  MasterNodes      `json:"validators"`  // max 99
+	Penalties   []common.Address `json:"penalties"`
 }
 
 func (e *Epoch) FromBytes(b []byte) error {
@@ -55,10 +93,18 @@ func (e *Epoch) ToBytes() []byte {
 	return b
 }
 
-func (e *Epoch) Validator(epochLength uint64, number uint64) common.Address {
+func (e *Epoch) Signer(epochLength uint64, number uint64) common.Address {
 	if len(e.Validators) == 0 {
 		return common.Address{}
 	}
 	mod := number % epochLength
-	return e.Validators[int(mod)%len(e.Validators)]
+	return e.Validators[int(mod)%len(e.Validators)].Address
+}
+
+func (e *Epoch) Signers() []common.Address {
+	var signers []common.Address
+	for _, v := range e.Validators {
+		signers = append(signers, v.Address)
+	}
+	return signers
 }

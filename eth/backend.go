@@ -284,7 +284,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// for PoSV
 	if chainConfig.Posv != nil {
-		c := eth.engine.(*posv.PoSV)
+		var c *posv.PoSV
+		if cl, ok := eth.engine.(*beacon.Beacon); ok {
+			if e, ok := cl.InnerEngine().(*posv.PoSV); ok {
+				c = e
+			}
+		}
 
 		eth.TxPool().IsSigner = func(address common.Address) bool {
 			currentHeader := eth.blockchain.CurrentHeader()
@@ -296,13 +301,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				// not genesis block
 				header = parentHeader
 			}
-			snap, err := c.GetSnapshot(eth.blockchain, header)
-			if err != nil {
-				log.Error("Can't get snapshot with at ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
+
+			lastCheckpoint := c.LastEpoch(header.Number.Uint64())
+			var extra posv.Extra
+			if err := extra.FromBytes(eth.blockchain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 				return false
 			}
-			if _, ok := snap.Signers[address]; ok {
-				return true
+
+			for _, v := range extra.Epoch.Signers() {
+				if v == address {
+					return true
+				}
 			}
 			return false
 		}
