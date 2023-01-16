@@ -330,7 +330,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return validators, nil
 		}
 
-		c.HookGetSigners = func(number *big.Int) ([]common.Address, error) {
+		c.HookGetMasterNodes = func(number *big.Int) (posv.MasterNodes, error) {
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
@@ -342,7 +342,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 
 			var (
-				masternodes []posv.MasterNode
+				masternodes posv.MasterNodes
 			)
 			for k, v := range candidates {
 				masternodes = append(masternodes, posv.MasterNode{
@@ -350,18 +350,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					Stake:   v,
 				})
 			}
-			// sort candidates by stake descending
-			sort.Slice(masternodes, func(i, j int) bool {
-				return masternodes[i].Stake.Cmp(masternodes[j].Stake) >= 0
-			})
-			if len(masternodes) > common.MaxMasternodes {
-				masternodes = masternodes[:common.MaxMasternodes]
-			}
-			var result = make([]common.Address, 0)
-			for _, m := range masternodes {
-				result = append(result, m.Address)
-			}
-			return result, nil
+			sort.Sort(masternodes)
+			return masternodes, nil
 		}
 
 		c.HookBlockSign = func(block *types.Block) error {

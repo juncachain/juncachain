@@ -23,18 +23,15 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/juncachain/juncachain/accounts"
-	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/misc"
-	contractValidator "github.com/juncachain/juncachain/contracts/validator/contract"
 	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/crypto"
@@ -189,16 +186,13 @@ type PoSV struct {
 	signFn SignerFn       // Signer function to authorize hashes with
 	lock   sync.RWMutex   // Protects the signer and proposals fields
 
-	// The fields below are for testing only
-	fakeDiff bool // Skip difficulty verifications
-
 	checkpoints *lru.ARCCache
 
 	endpoint string
 	once     sync.Once
 	client   *ethclient.Client
 
-	HookGetSigners          func(number *big.Int) ([]common.Address, error)
+	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
 	HookValidator           func(header *types.Header, signers []common.Address) ([]byte, error)
 	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainReader, state *state.StateDB, parentState *state.StateDB, header *types.Header) (error, map[string]interface{})
@@ -380,7 +374,7 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		}
 	}
 	// All basic checks passed, verify the seal and return
-	return c.verifySeal(header, parents)
+	return c.verifySeal(chain, header, parents)
 }
 
 // VerifyUncles implements consensus.Engine, always returning an error for any
@@ -396,7 +390,7 @@ func (c *PoSV) VerifyUncles(chain consensus.ChainReader, block *types.Block) err
 // consensus protocol requirements. The method accepts an optional list of parent
 // headers that aren't yet part of the local blockchain to generate the snapshots
 // from.
-func (c *PoSV) verifySeal(header *types.Header, parents []*types.Header) error {
+func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -407,9 +401,8 @@ func (c *PoSV) verifySeal(header *types.Header, parents []*types.Header) error {
 	if err != nil {
 		return err
 	}
-
-	var extra Extra
-	if err := extra.FromBytes(header.Extra); err != nil {
+	extra, err := c.extra(chain, c.LastEpoch(number))
+	if err != nil {
 		return err
 	}
 	if extra.Epoch.Validators.M1(c.config.Epoch, number) != signer {
@@ -684,18 +677,28 @@ func (c *PoSV) extra(chain consensus.ChainHeaderReader, epoch uint64) (*Extra, e
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) nextExtra(number uint64) (*Extra, error) {
-	ms, err := c.getValidatorsFromContract(number - 2)
+func (c *PoSV) nextExtra(epoch uint64) (*Extra, error) {
+	if epoch%c.config.Epoch != 0 {
+		return nil, errors.New("Not checkpoint")
+	}
+	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(epoch - 2))
 	if err != nil {
 		return nil, err
 	}
 	extra := new(Extra)
-	extra.Epoch.Checkpoint = number
-	for _, v := range ms {
-		extra.Epoch.Validators = append(extra.Epoch.Validators, MasterNode{Address: v.Address, Stake: v.Stake})
-		extra.Epoch.MasterNodes = append(extra.Epoch.MasterNodes, MasterNode{Address: v.Address, Stake: v.Stake})
+	extra.Epoch.Checkpoint = epoch
+	for i, v := range ms {
+		if v.Stake.Cmp(c.config.MinStaked) < 0 {
+			continue
+		}
+		if i < common.MaxSigners {
+			extra.Epoch.MasterNodes = append(extra.Epoch.MasterNodes, MasterNode{Address: v.Address, Stake: v.Stake})
+		}
+		if i < common.MaxMasternodes {
+			extra.Epoch.Validators = append(extra.Epoch.Validators, MasterNode{Address: v.Address, Stake: v.Stake})
+		}
 	}
-	c.checkpoints.Add(number, extra)
+	c.checkpoints.Add(epoch, extra)
 	return extra, nil
 }
 
@@ -730,41 +733,4 @@ func (c *PoSV) initClient() {
 			}
 		}
 	})
-}
-
-func (c *PoSV) getValidatorsFromContract(number uint64) (MasterNodes, error) {
-	if c.client == nil {
-		c.initClient()
-	}
-	var ms MasterNodes
-	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(common.MasternodeVotingSMC), c.client)
-	if err != nil {
-		return ms, err
-	}
-	opts := new(bind.CallOpts)
-	opts.BlockNumber = new(big.Int).SetUint64(number)
-	candidates, err := validator.GetCandidates(opts)
-	if err != nil {
-		return ms, err
-	}
-	var zeroAddress = common.Address{}
-	for _, candidate := range candidates {
-		if bytes.Equal(candidate[:], zeroAddress[:]) {
-			continue
-		}
-
-		v, err := validator.GetCandidateCap(opts, candidate)
-		if err != nil {
-			return ms, err
-		}
-		if v.Cmp(c.config.MinStaked) < 0 {
-			continue
-		}
-		ms = append(ms, MasterNode{Address: candidate, Stake: v})
-	}
-	sort.Sort(ms)
-	if len(ms) == 0 {
-		log.Error("No MasterNode found. don't update M1")
-	}
-	return ms, nil
 }
