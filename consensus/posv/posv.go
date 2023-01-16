@@ -19,6 +19,7 @@ package posv
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math/big"
@@ -629,9 +630,9 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
-	if header.Coinbase != signer {
-		return errors.New("no sealing turn, must wait for others")
-	}
+	//if header.Coinbase != signer {
+	//	return errors.New("no sealing turn, must wait for others")
+	//}
 
 	// Get master nodes
 	ms, err := c.masterNodes(c.lastEpoch(number))
@@ -829,11 +830,23 @@ func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
 
 func (c *PoSV) initEthClient() {
 	c.once.Do(func() {
-		client, err := ethclient.Dial(c.endpoint)
-		if err != nil {
-			log.Crit("PoSV ethclient.Dial", "error", err)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Crit("PoSV ethclient.Dial", "error", "timeout")
+			default:
+				client, err := ethclient.Dial(c.endpoint)
+				if err != nil {
+					log.Error("PoSV ethclient.Dial", "error", err)
+					continue
+				}
+				c.client = client
+				return
+			}
+
 		}
-		c.client = client
 	})
 }
 
