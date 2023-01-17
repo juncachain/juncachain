@@ -36,29 +36,29 @@ type API struct {
 }
 
 // GetSnapshot retrieves the state snapshot at a given block.
-func (api *API) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
-	// Retrieve the requested block number (or current if none requested)
-	var header *types.Header
-	if number == nil || *number == rpc.LatestBlockNumber {
-		header = api.chain.CurrentHeader()
-	} else {
-		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
-	}
-	// Ensure we have an actually valid block and return its snapshot
-	if header == nil {
-		return nil, errUnknownBlock
-	}
-	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-}
+//func (api *API) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
+//	// Retrieve the requested block number (or current if none requested)
+//	var header *types.Header
+//	if number == nil || *number == rpc.LatestBlockNumber {
+//		header = api.chain.CurrentHeader()
+//	} else {
+//		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
+//	}
+//	// Ensure we have an actually valid block and return its snapshot
+//	if header == nil {
+//		return nil, errUnknownBlock
+//	}
+//	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+//}
 
 // GetSnapshotAtHash retrieves the state snapshot at a given block.
-func (api *API) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
-	header := api.chain.GetHeaderByHash(hash)
-	if header == nil {
-		return nil, errUnknownBlock
-	}
-	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-}
+//func (api *API) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
+//	header := api.chain.GetHeaderByHash(hash)
+//	if header == nil {
+//		return nil, errUnknownBlock
+//	}
+//	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
+//}
 
 // GetSigners retrieves the list of authorized signers at the specified block.
 func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
@@ -73,11 +73,12 @@ func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-	if err != nil {
+	lastCheckpoint := api.posv.LastEpoch(header.Number.Uint64())
+	var extra Extra
+	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
 	}
-	return snap.signers(), nil
+	return extra.Epoch.Signers(), nil
 }
 
 // GetSignersAtHash retrieves the list of authorized signers at the specified block.
@@ -86,97 +87,13 @@ func (api *API) GetSignersAtHash(hash common.Hash) ([]common.Address, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-	if err != nil {
+
+	lastCheckpoint := api.posv.LastEpoch(header.Number.Uint64())
+	var extra Extra
+	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
 	}
-	return snap.signers(), nil
-}
-
-//// Proposals returns the current proposals the node tries to uphold and vote on.
-//func (api *API) Proposals() map[common.Address]bool {
-//	api.posv.lock.RLock()
-//	defer api.posv.lock.RUnlock()
-//
-//	proposals := make(map[common.Address]bool)
-//	for address, auth := range api.posv.proposals {
-//		proposals[address] = auth
-//	}
-//	return proposals
-//}
-//
-//// Propose injects a new authorization proposal that the signer will attempt to
-//// push through.
-//func (api *API) Propose(address common.Address, auth bool) {
-//	api.posv.lock.Lock()
-//	defer api.posv.lock.Unlock()
-//
-//	api.posv.proposals[address] = auth
-//}
-//
-//// Discard drops a currently running proposal, stopping the signer from casting
-//// further votes (either for or against).
-//func (api *API) Discard(address common.Address) {
-//	api.posv.lock.Lock()
-//	defer api.posv.lock.Unlock()
-//
-//	delete(api.posv.proposals, address)
-//}
-
-type status struct {
-	InturnPercent float64                `json:"inturnPercent"`
-	SigningStatus map[common.Address]int `json:"sealerActivity"`
-	NumBlocks     uint64                 `json:"numBlocks"`
-}
-
-// Status returns the status of the last N blocks,
-// - the number of active signers,
-// - the number of signers,
-// - the percentage of in-turn blocks
-func (api *API) Status() (*status, error) {
-	var (
-		numBlocks = uint64(64)
-		header    = api.chain.CurrentHeader()
-		diff      = uint64(0)
-		optimals  = 0
-	)
-	snap, err := api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-	if err != nil {
-		return nil, err
-	}
-	var (
-		signers = snap.signers()
-		end     = header.Number.Uint64()
-		start   = end - numBlocks
-	)
-	if numBlocks > end {
-		start = 1
-		numBlocks = end - start
-	}
-	signStatus := make(map[common.Address]int)
-	for _, s := range signers {
-		signStatus[s] = 0
-	}
-	for n := start; n < end; n++ {
-		h := api.chain.GetHeaderByNumber(n)
-		if h == nil {
-			return nil, fmt.Errorf("missing block %d", n)
-		}
-		if h.Difficulty.Cmp(diffInTurn) == 0 {
-			optimals++
-		}
-		diff += h.Difficulty.Uint64()
-		sealer, err := api.posv.Author(h)
-		if err != nil {
-			return nil, err
-		}
-		signStatus[sealer]++
-	}
-	return &status{
-		InturnPercent: float64(100*optimals) / float64(numBlocks),
-		SigningStatus: signStatus,
-		NumBlocks:     numBlocks,
-	}, nil
+	return extra.Epoch.Signers(), nil
 }
 
 type blockNumberOrHashOrRLP struct {

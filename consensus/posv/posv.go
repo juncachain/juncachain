@@ -23,20 +23,15 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"math/rand"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/juncachain/juncachain/accounts"
-	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/common"
-	"github.com/juncachain/juncachain/common/hexutil"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/misc"
-	contractValidator "github.com/juncachain/juncachain/contracts/validator/contract"
 	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/crypto"
@@ -61,15 +56,16 @@ const (
 	M2ByteLength = 4
 )
 
-// PoSV Proof-of-Stake Voting protocol constants.
-var (
-	epochLength = uint64(30000) // Default number of blocks after which to checkpoint and reset the pending votes
-
+const (
+	epochLength = uint64(900)            // Default number of blocks after which to checkpoint and reset the pending votes
 	extraVanity = 32                     // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal   = crypto.SignatureLength // Fixed number of extra-data suffix bytes reserved for signer seal
+)
 
-	nonceAuthVote = hexutil.MustDecode("0xffffffffffffffff") // Magic nonce number to vote on adding a new signer
-	nonceDropVote = hexutil.MustDecode("0x0000000000000000") // Magic nonce number to vote on removing a signer.
+// PoSV Proof-of-Stake Voting protocol constants.
+var (
+	//nonceAuthVote = hexutil.MustDecode("0xffffffffffffffff") // Magic nonce number to vote on adding a new signer
+	//nonceDropVote = hexutil.MustDecode("0x0000000000000000") // Magic nonce number to vote on removing a signer.
 
 	uncleHash = types.CalcUncleHash(nil) // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW.
 
@@ -190,13 +186,19 @@ type PoSV struct {
 	signFn SignerFn       // Signer function to authorize hashes with
 	lock   sync.RWMutex   // Protects the signer and proposals fields
 
-	// The fields below are for testing only
-	fakeDiff bool // Skip difficulty verifications
+	checkpoints *lru.ARCCache
 
-	checkpoints map[uint64]MasterNodes
-	endpoint    string
-	once        sync.Once
-	client      *ethclient.Client
+	endpoint string
+	once     sync.Once
+	client   *ethclient.Client
+
+	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
+	HookValidator           func(header *types.Header, signers []common.Address) ([]byte, error)
+	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
+	HookReward              func(chain consensus.ChainReader, state *state.StateDB, parentState *state.StateDB, header *types.Header) (error, map[string]interface{})
+	HookBlockSign           func(block *types.Block) error
+	HookSetRandomizeSecret  func(block *types.Block) error
+	HookSetRandomizeOpening func(block *types.Block) error
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -210,6 +212,7 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	// Allocate the snapshot caches and create the engine
 	recents, _ := lru.NewARC(inmemorySnapshots)
 	signatures, _ := lru.NewARC(inmemorySignatures)
+	checkpoints, _ := lru.NewARC(inmemorySignatures)
 
 	return &PoSV{
 		config:      &conf,
@@ -217,7 +220,7 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 		recents:     recents,
 		signatures:  signatures,
 		proposals:   make(map[common.Address]bool),
-		checkpoints: make(map[uint64]MasterNodes),
+		checkpoints: checkpoints,
 	}
 }
 
@@ -273,12 +276,12 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 		return errInvalidCheckpointBeneficiary
 	}
 	// Nonces must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-	if !bytes.Equal(header.Nonce[:], nonceAuthVote) && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-		return errInvalidVote
-	}
-	if checkpoint && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-		return errInvalidCheckpointVote
-	}
+	//if !bytes.Equal(header.Nonce[:], nonceAuthVote) && !bytes.Equal(header.Nonce[:], nonceDropVote) {
+	//	return errInvalidVote
+	//}
+	//if checkpoint && !bytes.Equal(header.Nonce[:], nonceDropVote) {
+	//	return errInvalidCheckpointVote
+	//}
 	// Check that the extra-data contains both the vanity and signature
 	if len(header.Extra) < extraVanity {
 		return errMissingVanity
@@ -286,12 +289,12 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	if len(header.Extra) < extraVanity+extraSeal {
 		return errMissingSignature
 	}
-	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-	signersBytes := len(header.Extra) - extraVanity - extraSeal
-	if !checkpoint && signersBytes != 0 {
+	// Ensure that the extra-data contains an epoch on checkpoint, but none otherwise
+	epochBytes := len(header.Extra) - extraVanity - extraSeal
+	if !checkpoint && epochBytes != 0 {
 		return errExtraSigners
 	}
-	if checkpoint && signersBytes%common.AddressLength != 0 {
+	if checkpoint && epochBytes == 0 {
 		return errInvalidCheckpointSigners
 	}
 	// Ensure that the mix digest is zero as we don't have fork protection currently
@@ -359,105 +362,19 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
-	// Retrieve the snapshot needed to verify this header and cache it
-	snap, err := c.snapshot(chain, number-1, header.ParentHash, parents)
-	if err != nil {
-		return err
-	}
+
 	// If the block is a checkpoint block, verify the signer list
 	if number%c.config.Epoch == 0 {
-		signers := make([]byte, len(snap.Signers)*common.AddressLength)
-		for i, signer := range snap.signers() {
-			copy(signers[i*common.AddressLength:], signer[:])
+		var extra Extra
+		if err := extra.FromBytes(header.Extra); err != nil {
+			return err
 		}
-		extraSuffix := len(header.Extra) - extraSeal
-		if !bytes.Equal(header.Extra[extraVanity:extraSuffix], signers) {
+		if len(extra.Epoch.Validators) == 0 {
 			return errMismatchingCheckpointSigners
 		}
 	}
 	// All basic checks passed, verify the seal and return
-	return c.verifySeal(snap, header, parents)
-}
-
-// snapshot retrieves the authorization snapshot at a given point in time.
-func (c *PoSV) snapshot(chain consensus.ChainHeaderReader, number uint64, hash common.Hash, parents []*types.Header) (*Snapshot, error) {
-	// Search for a snapshot in memory or on disk for checkpoints
-	var (
-		headers []*types.Header
-		snap    *Snapshot
-	)
-	for snap == nil {
-		// If an in-memory snapshot was found, use that
-		if s, ok := c.recents.Get(hash); ok {
-			snap = s.(*Snapshot)
-			break
-		}
-		// If an on-disk checkpoint snapshot can be found, use that
-		if number%checkpointInterval == 0 {
-			if s, err := loadSnapshot(c.config, c.signatures, c.db, hash); err == nil {
-				log.Trace("Loaded voting snapshot from disk", "number", number, "hash", hash)
-				snap = s
-				break
-			}
-		}
-		// If we're at the genesis, snapshot the initial state. Alternatively if we're
-		// at a checkpoint block without a parent (light client CHT), or we have piled
-		// up more headers than allowed to be reorged (chain reinit from a freezer),
-		// consider the checkpoint trusted and snapshot it.
-		if number == 0 || (number%c.config.Epoch == 0 && (len(headers) > params.FullImmutabilityThreshold || chain.GetHeaderByNumber(number-1) == nil)) {
-			checkpoint := chain.GetHeaderByNumber(number)
-			if checkpoint != nil {
-				hash := checkpoint.Hash()
-
-				signers := make([]common.Address, (len(checkpoint.Extra)-extraVanity-extraSeal)/common.AddressLength)
-				for i := 0; i < len(signers); i++ {
-					copy(signers[i][:], checkpoint.Extra[extraVanity+i*common.AddressLength:])
-				}
-				snap = newSnapshot(c.config, c.signatures, number, hash, signers)
-				if err := snap.store(c.db); err != nil {
-					return nil, err
-				}
-				log.Info("Stored checkpoint snapshot to disk", "number", number, "hash", hash)
-				break
-			}
-		}
-		// No snapshot for this header, gather the header and move backward
-		var header *types.Header
-		if len(parents) > 0 {
-			// If we have explicit parents, pick from there (enforced)
-			header = parents[len(parents)-1]
-			if header.Hash() != hash || header.Number.Uint64() != number {
-				return nil, consensus.ErrUnknownAncestor
-			}
-			parents = parents[:len(parents)-1]
-		} else {
-			// No explicit parents (or no more left), reach out to the database
-			header = chain.GetHeader(hash, number)
-			if header == nil {
-				return nil, consensus.ErrUnknownAncestor
-			}
-		}
-		headers = append(headers, header)
-		number, hash = number-1, header.ParentHash
-	}
-	// Previous snapshot found, apply any pending headers on top of it
-	for i := 0; i < len(headers)/2; i++ {
-		headers[i], headers[len(headers)-1-i] = headers[len(headers)-1-i], headers[i]
-	}
-	snap, err := snap.apply(headers)
-	if err != nil {
-		return nil, err
-	}
-	c.recents.Add(snap.Hash, snap)
-
-	// If we've generated a new checkpoint snapshot, save to disk
-	if snap.Number%checkpointInterval == 0 && len(headers) > 0 {
-		if err = snap.store(c.db); err != nil {
-			return nil, err
-		}
-		log.Trace("Stored voting snapshot to disk", "number", snap.Number, "hash", snap.Hash)
-	}
-	return snap, err
+	return c.verifySeal(chain, header, parents)
 }
 
 // VerifyUncles implements consensus.Engine, always returning an error for any
@@ -473,7 +390,7 @@ func (c *PoSV) VerifyUncles(chain consensus.ChainReader, block *types.Block) err
 // consensus protocol requirements. The method accepts an optional list of parent
 // headers that aren't yet part of the local blockchain to generate the snapshots
 // from.
-func (c *PoSV) verifySeal(snap *Snapshot, header *types.Header, parents []*types.Header) error {
+func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	// Verifying the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -484,26 +401,12 @@ func (c *PoSV) verifySeal(snap *Snapshot, header *types.Header, parents []*types
 	if err != nil {
 		return err
 	}
-	if _, ok := snap.Signers[signer]; !ok {
+	extra, err := c.extra(chain, c.LastEpoch(number))
+	if err != nil {
+		return err
+	}
+	if extra.Epoch.Validators.M1(c.config.Epoch, number) != signer {
 		return errUnauthorizedSigner
-	}
-	for seen, recent := range snap.Recents {
-		if recent == signer {
-			// Signer is among recents, only fail if the current block doesn't shift it out
-			if limit := uint64(len(snap.Signers)/2 + 1); seen > number-limit {
-				return errRecentlySigned
-			}
-		}
-	}
-	// Ensure that the difficulty corresponds to the turn-ness of the signer
-	if !c.fakeDiff {
-		inturn := snap.inturn(header.Number.Uint64(), signer)
-		if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
-			return errWrongDifficulty
-		}
-		if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
-			return errWrongDifficulty
-		}
 	}
 	return nil
 }
@@ -517,44 +420,26 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 
 	number := header.Number.Uint64()
 
-	ms, err := c.masterNodes(c.lastEpoch(number))
-	if err != nil {
-		return err
-	}
-	header.Coinbase = ms.M1(c.config.Epoch, number)
-
-	// Assemble the voting snapshot to check which votes make sense
-	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
+	extra, err := c.extra(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
 	c.lock.RLock()
 
-	if number%c.config.Epoch != 0 {
-		//// Gather all the proposals that make sense voting on
-		//addresses := make([]common.Address, 0, len(c.proposals))
-		//for address, authorize := range c.proposals {
-		//	if snap.validVote(address, authorize) {
-		//		addresses = append(addresses, address)
-		//	}
-		//}
-		//// If there's pending proposals, cast a vote on them
-		//if len(addresses) > 0 {
-		//	header.Coinbase = addresses[rand.Intn(len(addresses))]
-		//	if c.proposals[header.Coinbase] {
-		//		copy(header.Nonce[:], nonceAuthVote)
-		//	} else {
-		//		copy(header.Nonce[:], nonceDropVote)
-		//	}
-		//}
-	}
-
 	// Copy signer protected by mutex to avoid race condition
 	signer := c.signer
 	c.lock.RUnlock()
 
-	// Set the correct difficulty
-	header.Difficulty = calcDifficulty(snap, signer)
+	if number%c.config.Epoch != 0 {
+		header.Coinbase = extra.Epoch.Signer(c.config.Epoch, number)
+
+		// Set the correct difficulty
+		if signer == header.Coinbase {
+			header.Difficulty = new(big.Int).Set(diffInTurn)
+		} else {
+			header.Difficulty = new(big.Int).Set(diffNoTurn)
+		}
+	}
 
 	// Ensure the extra data has all its components
 	if len(header.Extra) < extraVanity {
@@ -562,9 +447,11 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 	header.Extra = header.Extra[:extraVanity]
 	if number%c.config.Epoch == 0 {
-		for _, m := range ms {
-			header.Extra = append(header.Extra, m.Address[:]...)
+		nextEpochExtra, err := c.nextExtra(number)
+		if err != nil {
+			return err
 		}
+		header.Extra = append(header.Extra, nextEpochExtra.Epoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -630,52 +517,16 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
-	//if header.Coinbase != signer {
-	//	return errors.New("no sealing turn, must wait for others")
-	//}
-
 	// Get master nodes
-	ms, err := c.masterNodes(c.lastEpoch(number))
+	extra, err := c.extra(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
 
-	// Bail out if we're unauthorized to sign a block
-	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	if _, authorized := snap.Signers[signer]; !authorized {
-		valid := false
-		for _, m := range ms {
-			if m.Address == signer {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return errUnauthorizedSigner
-		}
+	if signer != extra.Epoch.Validators.M1(c.config.Epoch, number) {
+		return errors.New("No turn to seal")
 	}
 
-	// If we're amongst the recent signers, wait for the next block
-	for seen, recent := range snap.Recents {
-		if recent == signer {
-			// Signer is among recents, only wait if the current block doesn't shift it out
-			if limit := uint64(len(snap.Signers)/2 + 1); number < limit || seen > number-limit {
-				return errors.New("signed recently, must wait for others")
-			}
-		}
-	}
-	// Sweet, the protocol permits us to sign the block, wait for our time
-	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
-	if header.Difficulty.Cmp(diffNoTurn) == 0 {
-		// It's not our turn explicitly to sign, delay it a bit
-		wiggle := time.Duration(len(snap.Signers)/2+1) * wiggleTime
-		delay += time.Duration(rand.Int63n(int64(wiggle)))
-
-		log.Trace("Out-of-turn signing requested", "wiggle", common.PrettyDuration(wiggle))
-	}
 	// Sign all the things!
 	sighash, err := signFn(accounts.Account{Address: signer}, accounts.MimetypePoSV, CliqueRLP(header))
 	if err != nil {
@@ -683,12 +534,12 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 	// Wait until sealing is terminated or delay timeout.
-	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
+	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(time.Second*2))
 	go func() {
 		select {
 		case <-stop:
 			return
-		case <-time.After(delay):
+		case <-time.After(time.Second * 2):
 		}
 
 		select {
@@ -706,18 +557,11 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	snap, err := c.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil {
-		return nil
-	}
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
-	return calcDifficulty(snap, signer)
-}
 
-func calcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
-	if snap.inturn(snap.Number+1, signer) {
+	if signer == chain.CurrentHeader().Coinbase {
 		return new(big.Int).Set(diffInTurn)
 	}
 	return new(big.Int).Set(diffNoTurn)
@@ -806,7 +650,7 @@ func ExtractValidatorsFromBytes(byteValidators []byte) []int64 {
 	return validators
 }
 
-func (c *PoSV) lastEpoch(number uint64) uint64 {
+func (c *PoSV) LastEpoch(number uint64) uint64 {
 	if number <= c.config.Epoch {
 		return 0
 	} else if number%c.config.Epoch == 0 {
@@ -815,78 +659,78 @@ func (c *PoSV) lastEpoch(number uint64) uint64 {
 	return number - number%c.config.Epoch
 }
 
-func (c *PoSV) masterNodes(epoch uint64) (MasterNodes, error) {
-	ms, ok := c.checkpoints[epoch]
+func (c *PoSV) extra(chain consensus.ChainHeaderReader, epoch uint64) (*Extra, error) {
+	v, ok := c.checkpoints.Get(epoch)
 	if ok {
-		return ms, nil
+		return v.(*Extra), nil
 	}
-	ms, err := c.getMasterNodesFromContract(epoch)
-	if err != nil {
-		return ms, err
+
+	header := chain.GetHeaderByNumber(epoch)
+	if header != nil {
+		extra := new(Extra)
+		if err := extra.FromBytes(header.Extra); err != nil {
+			return nil, err
+		}
+		c.checkpoints.Add(epoch, extra)
+		return extra, nil
 	}
-	c.checkpoints[epoch] = ms
-	return ms, nil
+	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) initEthClient() {
+func (c *PoSV) nextExtra(epoch uint64) (*Extra, error) {
+	if epoch%c.config.Epoch != 0 {
+		return nil, errors.New("Not checkpoint")
+	}
+	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(epoch - 2))
+	if err != nil {
+		return nil, err
+	}
+	extra := new(Extra)
+	extra.Epoch.Checkpoint = epoch
+	for i, v := range ms {
+		if v.Stake.Cmp(c.config.MinStaked) < 0 {
+			continue
+		}
+		if i < common.MaxSigners {
+			extra.Epoch.MasterNodes = append(extra.Epoch.MasterNodes, MasterNode{Address: v.Address, Stake: v.Stake})
+		}
+		if i < common.MaxMasternodes {
+			extra.Epoch.Validators = append(extra.Epoch.Validators, MasterNode{Address: v.Address, Stake: v.Stake})
+		}
+	}
+	c.checkpoints.Add(epoch, extra)
+	return extra, nil
+}
+
+func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
+	c.checkpoints.Add(epoch, extra)
+}
+
+func (c *PoSV) Config() *params.PoSVConfig {
+	return c.config
+}
+
+func (c *PoSV) SetIPCEndpoint(endpoint string) {
+	c.endpoint = endpoint
+}
+
+func (c *PoSV) initClient() {
 	c.once.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 		for {
 			select {
 			case <-ctx.Done():
-				log.Crit("PoSV ethclient.Dial", "error", "timeout")
+				log.Crit("PoSV init ethclient timeout")
 			default:
-				client, err := ethclient.Dial(c.endpoint)
+				cli, err := ethclient.Dial(c.endpoint)
 				if err != nil {
-					log.Error("PoSV ethclient.Dial", "error", err)
+					log.Warn("PoSV ethclient.Dial", "err", err)
 					continue
 				}
-				c.client = client
+				c.client = cli
 				return
 			}
-
 		}
 	})
-}
-
-func (c *PoSV) getMasterNodesFromContract(epoch uint64) (MasterNodes, error) {
-	if c.client == nil {
-		c.initEthClient()
-	}
-	var ms MasterNodes
-	validator, err := contractValidator.NewJuncaValidator(common.HexToAddress(params.JuncaValidator), c.client)
-	if err != nil {
-		return ms, err
-	}
-	opts := new(bind.CallOpts)
-	opts.BlockNumber = new(big.Int).SetUint64(epoch)
-	candidates, err := validator.GetCandidates(opts)
-	if err != nil {
-		return ms, err
-	}
-	var zeroAddress = common.Address{}
-	for _, candidate := range candidates {
-		if bytes.Equal(candidate[:], zeroAddress[:]) {
-			continue
-		}
-
-		v, err := validator.GetCandidateCap(opts, candidate)
-		if err != nil {
-			return ms, err
-		}
-		if v.Cmp(c.config.MinStaked) < 0 {
-			continue
-		}
-		ms = append(ms, MasterNode{Address: candidate, Stake: v})
-	}
-	sort.Sort(ms)
-	if len(ms) == 0 {
-		log.Error("No MasterNode found. don't update M1")
-	}
-	return ms, nil
-}
-
-func (c *PoSV) SetIPCEndpoint(endpoint string) {
-	c.endpoint = endpoint
 }
