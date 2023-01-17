@@ -18,16 +18,9 @@
 package eth
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"math/big"
-	"runtime"
-	"sort"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
-
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/common/hexutil"
@@ -61,6 +54,13 @@ import (
 	"github.com/juncachain/juncachain/params"
 	"github.com/juncachain/juncachain/rlp"
 	"github.com/juncachain/juncachain/rpc"
+	"math/big"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -106,6 +106,7 @@ type Ethereum struct {
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
 	IPCEndpoint string
+	once        sync.Once
 	client      *ethclient.Client // Global ipc client instance.
 }
 
@@ -174,6 +175,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		bloomIndexer:      core.NewBloomIndexer(chainDb, params.BloomBitsBlocks, params.BloomConfirms),
 		p2pServer:         stack.Server(),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		IPCEndpoint:       stack.IPCEndpoint(),
 	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
@@ -246,42 +248,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}); err != nil {
 		return nil, err
 	}
-
-	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
-	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
-
-	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
-	if eth.APIBackend.allowUnprotectedTxs {
-		log.Info("Unprotected transactions allowed")
-	}
-	gpoParams := config.GPO
-	if gpoParams.Default == nil {
-		gpoParams.Default = config.Miner.GasPrice
-	}
-	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, gpoParams)
-
-	// Setup DNS discovery iterators.
-	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
-	eth.ethDialCandidates, err = dnsclient.NewIterator(eth.config.EthDiscoveryURLs...)
-	if err != nil {
-		return nil, err
-	}
-	eth.snapDialCandidates, err = dnsclient.NewIterator(eth.config.SnapDiscoveryURLs...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Start the RPC service
-	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, config.NetworkId)
-
-	// Register the backend on the node
-	stack.RegisterAPIs(eth.APIs())
-	stack.RegisterProtocols(eth.Protocols())
-	stack.RegisterLifecycle(eth)
-
-	// Successful startup; push a marker and check previous unclean shutdowns.
-	eth.shutdownTracker.MarkStartup()
-
 	// for PoSV
 	if chainConfig.Posv != nil {
 		var c *posv.PoSV
@@ -372,6 +338,42 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return nil
 		}
 	}
+
+	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
+	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
+
+	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
+	if eth.APIBackend.allowUnprotectedTxs {
+		log.Info("Unprotected transactions allowed")
+	}
+	gpoParams := config.GPO
+	if gpoParams.Default == nil {
+		gpoParams.Default = config.Miner.GasPrice
+	}
+	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, gpoParams)
+
+	// Setup DNS discovery iterators.
+	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
+	eth.ethDialCandidates, err = dnsclient.NewIterator(eth.config.EthDiscoveryURLs...)
+	if err != nil {
+		return nil, err
+	}
+	eth.snapDialCandidates, err = dnsclient.NewIterator(eth.config.SnapDiscoveryURLs...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Start the RPC service
+	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, config.NetworkId)
+
+	// Register the backend on the node
+	stack.RegisterAPIs(eth.APIs())
+	stack.RegisterProtocols(eth.Protocols())
+	stack.RegisterLifecycle(eth)
+
+	// Successful startup; push a marker and check previous unclean shutdowns.
+	eth.shutdownTracker.MarkStartup()
+
 	return eth, nil
 }
 
@@ -678,15 +680,23 @@ func (s *Ethereum) Stop() error {
 }
 
 func (s *Ethereum) GetClient() (*ethclient.Client, error) {
-	if s.client == nil {
-		// Inject ipc client global instance.
-		client, err := ethclient.Dial(s.IPCEndpoint)
-		if err != nil {
-			log.Error("Fail to connect IPC", "error", err)
-			return nil, err
+	s.once.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Crit("PoSV init ethclient timeout")
+			default:
+				cli, err := ethclient.Dial(s.IPCEndpoint)
+				if err != nil {
+					log.Warn("PoSV ethclient.Dial", "err", err)
+					continue
+				}
+				s.client = cli
+				return
+			}
 		}
-		s.client = client
-	}
-
+	})
 	return s.client, nil
 }

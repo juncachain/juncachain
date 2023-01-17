@@ -232,6 +232,7 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
+	log.Info("------------VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -414,6 +415,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
+	log.Info("------------Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
@@ -430,16 +432,16 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	signer := c.signer
 	c.lock.RUnlock()
 
-	if number%c.config.Epoch != 0 {
-		header.Coinbase = extra.Epoch.Signer(c.config.Epoch, number)
+	//if number%c.config.Epoch != 0 {
+	header.Coinbase = extra.Epoch.Signer(c.config.Epoch, number)
 
-		// Set the correct difficulty
-		if signer == header.Coinbase {
-			header.Difficulty = new(big.Int).Set(diffInTurn)
-		} else {
-			header.Difficulty = new(big.Int).Set(diffNoTurn)
-		}
+	// Set the correct difficulty
+	if signer == header.Coinbase {
+		header.Difficulty = new(big.Int).Set(diffInTurn)
+	} else {
+		header.Difficulty = new(big.Int).Set(diffNoTurn)
 	}
+	//}
 
 	// Ensure the extra data has all its components
 	if len(header.Extra) < extraVanity {
@@ -473,6 +475,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
+	log.Info("------------Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = types.CalcUncleHash(nil)
@@ -481,6 +484,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
+	log.Info("------------FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -501,6 +505,7 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
+	log.Info("------------Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -557,6 +562,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
+	log.Info("------------CalcDifficulty", "time", time, "parent", parent)
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
@@ -569,6 +575,7 @@ func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *PoSV) SealHash(header *types.Header) common.Hash {
+	log.Info("------------SealHash", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return SealHash(header)
 }
 

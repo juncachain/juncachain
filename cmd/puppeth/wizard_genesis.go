@@ -41,7 +41,6 @@ import (
 	"github.com/juncachain/juncachain/crypto"
 	"github.com/juncachain/juncachain/log"
 	"github.com/juncachain/juncachain/params"
-	"github.com/juncachain/juncachain/rlp"
 )
 
 // makeGenesis creates a new genesis struct based on some user input.
@@ -385,10 +384,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
-		decode := []byte{}
-		trim := bytes.TrimLeft(val.Bytes(), "\x00")
-		_ = rlp.DecodeBytes(trim, &decode)
-		storage[key] = common.BytesToHash(decode)
+		storage[key] = val
 		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
@@ -435,10 +431,7 @@ func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAllo
 
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
-		decode := []byte{}
-		trim := bytes.TrimLeft(val.Bytes(), "\x00")
-		_ = rlp.DecodeBytes(trim, &decode)
-		storage[key] = common.BytesToHash(decode)
+		storage[key] = val
 		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
@@ -485,10 +478,7 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
-		decode := []byte{}
-		trim := bytes.TrimLeft(val.Bytes(), "\x00")
-		_ = rlp.DecodeBytes(trim, &decode)
-		storage[key] = common.BytesToHash(decode)
+		storage[key] = val
 		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
