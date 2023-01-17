@@ -62,30 +62,21 @@ func TestValidator(t *testing.T) {
 	}
 	contractBackend.Commit()
 
-	//d := time.Now().Add(1000 * time.Millisecond)
-	//ctx, cancel := context.WithDeadline(context.Background(), d)
-	//defer cancel()
 	code, _ := contractBackend.CodeAt(context.Background(), validatorAddress, nil)
 	t.Log("contract code", hexutil.Encode(code))
 
-	stateDB, err := contractBackend.StateDB(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().State()
 	if err != nil {
 		t.Fatalf("can't get stateDB by root: %v err:%v", head.Root.Hex(), err)
 	}
 
 	t.Log(string(stateDB.Dump(nil)))
 
-	//
-	////head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
-	//f := func(key, val common.Hash) bool {
-	//	t.Log(key.Hex(), val.Hex())
-	//	return true
-	//}
-	////stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
-	//if err != nil {
-	//	t.Fatalf("can't get stateDB by root: %v err:%v", head.Root.Hex(), err)
-	//}
-	//_ = stateDB.ForEachStorage(validatorAddress, f)
+	f := func(key, val common.Hash) bool {
+		t.Log(key.Hex(), val.Hex())
+		return true
+	}
+	_ = stateDB.ForEachStorage(validatorAddress, f)
 
 	candidates, err := validator.GetCandidates()
 	if err != nil {
