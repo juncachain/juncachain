@@ -366,8 +366,9 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 
 	// If the block is a checkpoint block, verify the signer list
 	if number%c.config.Epoch == 0 {
+		lastEpochHeader := chain.GetHeaderByNumber(c.LastEpoch(number))
 		var extra Extra
-		if err := extra.FromBytes(header.Extra); err != nil {
+		if err := extra.FromBytes(lastEpochHeader.Extra); err != nil {
 			return err
 		}
 		if len(extra.Epoch.Validators) == 0 {
@@ -416,6 +417,10 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
 	log.Info("------------Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
+	if header.Coinbase == common.ZeroAddress {
+		return nil
+	}
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
