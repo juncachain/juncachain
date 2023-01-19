@@ -406,7 +406,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 	}
 
 	genesisAlloc[common.HexToAddress(common.MasternodeVotingSMC)] = core.GenesisAccount{
-		Balance: stakeCap.Mul(stakeCap, big.NewInt(int64(len(validatorCaps)))),
+		Balance: new(big.Int).Mul(stakeCap, big.NewInt(int64(len(validatorCaps)))),
 		Code:    code,
 		Storage: storage,
 	}
