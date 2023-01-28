@@ -78,7 +78,7 @@ func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
 	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
 	}
-	return extra.Epoch.Signers(), nil
+	return extra.Epoch.M1Slice(), nil
 }
 
 // GetSignersAtHash retrieves the list of authorized signers at the specified block.
@@ -93,7 +93,7 @@ func (api *API) GetSignersAtHash(hash common.Hash) ([]common.Address, error) {
 	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
 	}
-	return extra.Epoch.Signers(), nil
+	return extra.Epoch.M1Slice(), nil
 }
 
 type blockNumberOrHashOrRLP struct {

@@ -32,18 +32,6 @@ func (ms MasterNodes) Swap(i, j int) {
 	ms[i], ms[j] = ms[j], ms[i]
 }
 
-func (ms MasterNodes) M1(epochLength uint64, number uint64) common.Address {
-	if len(ms) == 0 {
-		return common.Address{}
-	}
-	mod := number % epochLength
-	var index = 0
-	if mod != 0 {
-		index = int(mod) % len(ms)
-	}
-	return ms[index].Address
-}
-
 type Extra struct {
 	Vanity    [extraVanity]byte `json:"vanity"`
 	Epoch     Epoch             `json:"epoch"`
@@ -72,10 +60,10 @@ func (e *Extra) ToBytes() []byte {
 }
 
 type Epoch struct {
-	Checkpoint  uint64           `json:"checkpoint"`
-	MasterNodes MasterNodes      `json:"masterNodes"` // max 150
-	Validators  MasterNodes      `json:"validators"`  // max 99
-	Penalties   []common.Address `json:"penalties"`
+	Checkpoint uint64           `json:"checkpoint"`
+	M1s        MasterNodes      `json:"m1s"` // max 99
+	M2s        []common.Address `json:"m2s"` // max 150
+	Penalties  []common.Address `json:"penalties"`
 }
 
 func (e *Epoch) FromBytes(b []byte) error {
@@ -93,18 +81,34 @@ func (e *Epoch) ToBytes() []byte {
 	return b
 }
 
-func (e *Epoch) Signer(epochLength uint64, number uint64) common.Address {
-	if len(e.Validators) == 0 {
+func (e *Epoch) M1(epochLength uint64, number uint64) common.Address {
+	if len(e.M1s) == 0 {
 		return common.Address{}
 	}
 	mod := number % epochLength
-	return e.Validators[int(mod)%len(e.Validators)].Address
+	return e.M1s[int(mod)%len(e.M1s)].Address
 }
 
-func (e *Epoch) Signers() []common.Address {
-	var signers []common.Address
-	for _, v := range e.Validators {
-		signers = append(signers, v.Address)
+func (e *Epoch) M1Slice() []common.Address {
+	var m1s []common.Address
+	for _, v := range e.M1s {
+		m1s = append(m1s, v.Address)
 	}
-	return signers
+	return m1s
+}
+
+func (e *Epoch) M2(epochLength uint64, number uint64) common.Address {
+	if len(e.M2s) == 0 {
+		return common.Address{}
+	}
+	mod := number % epochLength
+	return e.M2s[int(mod)%len(e.M1s)]
+}
+
+func (e *Epoch) M2Slice() []common.Address {
+	var m2s []common.Address
+	for _, v := range e.M2s {
+		m2s = append(m2s, v)
+	}
+	return m2s
 }

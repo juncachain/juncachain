@@ -155,14 +155,11 @@ func (w *wizard) makeGenesis() {
 		var extra posv.Extra
 		extra.Epoch.Checkpoint = 0
 		for _, v := range signers {
-			extra.Epoch.MasterNodes = append(extra.Epoch.Validators, posv.MasterNode{
+			extra.Epoch.M1s = append(extra.Epoch.M1s, posv.MasterNode{
 				Address: v.Address,
 				Stake:   genesis.Config.Posv.MinStaked,
 			})
-			extra.Epoch.Validators = append(extra.Epoch.Validators, posv.MasterNode{
-				Address: v.Address,
-				Stake:   genesis.Config.Posv.MinStaked,
-			})
+			extra.Epoch.M2s = append(extra.Epoch.M2s, v.Address)
 		}
 		b := extra.ToBytes()
 		genesis.ExtraData = make([]byte, len(b))

@@ -18,7 +18,9 @@ package params
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"github.com/juncachain/juncachain/common/math"
 	"math/big"
 
 	"github.com/juncachain/juncachain/common"
@@ -414,6 +416,38 @@ type PoSVConfig struct {
 	Period    uint64   `json:"period"` // Number of seconds between blocks to enforce
 	Epoch     uint64   `json:"epoch"`  // Epoch length to reset votes and checkpoint
 	MinStaked *big.Int `json:"minStaked"`
+}
+
+func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
+	type PoSVConfig struct {
+		Period    uint64
+		Epoch     uint64
+		MinStaked *math.HexOrDecimal256
+	}
+
+	var enc PoSVConfig
+	enc.Period = pc.Period
+	enc.Epoch = pc.Epoch
+	enc.MinStaked = (*math.HexOrDecimal256)(pc.MinStaked)
+	return json.Marshal(&enc)
+}
+
+func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
+	type PoSVConfig struct {
+		Period    uint64
+		Epoch     uint64
+		MinStaked *math.HexOrDecimal256
+	}
+	var dec PoSVConfig
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	pc.Period = dec.Period
+	pc.Epoch = dec.Epoch
+	if dec.MinStaked != nil {
+		pc.MinStaked = (*big.Int)(dec.MinStaked)
+	}
+	return nil
 }
 
 // String implements the stringer interface, returning the consensus engine details.

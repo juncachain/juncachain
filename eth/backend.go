@@ -274,7 +274,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return false
 			}
 
-			for _, v := range extra.Epoch.Signers() {
+			for _, v := range extra.Epoch.M1Slice() {
 				if v == address {
 					return true
 				}
@@ -282,17 +282,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return false
 		}
 
-		c.HookValidator = func(header *types.Header, signers []common.Address) ([]byte, error) {
+		c.HookValidator = func(number *big.Int, masters []common.Address) ([]common.Address, error) {
 			start := time.Now()
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
 			}
-			validators, err := contracts.GetValidators(client, signers)
+			validators, err := contracts.GetValidators(client, masters)
 			if err != nil {
 				return nil, err
 			}
-			log.Debug("Time Calculated HookValidator ", "block", header.Number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
+			log.Debug("Time Calculated HookValidator ", "block", number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
 			return validators, nil
 		}
 
@@ -320,20 +320,56 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return masternodes, nil
 		}
 
-		c.HookBlockSign = func(block *types.Block) error {
+		c.HookBlockSign = func(block *types.Header) error {
 			eb, err := eth.Etherbase()
 			if err != nil {
-				log.Error("Cannot get etherbase for append m2 header", "err", err)
+				log.Error("Cannot get etherbase for block sign", "err", err)
 				return fmt.Errorf("etherbase missing: %v", err)
 			}
-			ok := eth.txPool.IsSigner != nil && eth.txPool.IsSigner(eb)
-			if !ok {
+			//ok := eth.txPool.IsSigner != nil && eth.txPool.IsSigner(eb)
+			//if !ok {
+			//	return nil
+			//}
+			//if block.NumberU64()%common.MergeSignRange == 0 {
+			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, block, chainDb, eb); err != nil {
+				return fmt.Errorf("Fail to create tx block sign for importing block: %v", err)
+			}
+			//}
+			return nil
+		}
+
+		c.HookSetRandomizeSecret = func(header *types.Header) error {
+			checkNumber := header.Number.Uint64() % c.Config().Epoch
+			if checkNumber != common.EpocBlockSecret {
 				return nil
 			}
-			if block.NumberU64()%common.MergeSignRange == 0 {
-				if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, block, chainDb, eb); err != nil {
-					return fmt.Errorf("Fail to create tx sign for importing block: %v", err)
-				}
+			log.Info("-------------Is check number to set secret", "number", header.Number.Uint64())
+
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for set random secret", "err", err)
+				return fmt.Errorf("etherbase missing: %v", err)
+			}
+
+			if err := contracts.CreateTransactionSetSecret(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+				return fmt.Errorf("Fail to create tx set secret for importing block: %v", err)
+			}
+			return nil
+		}
+
+		c.HookSetRandomizeOpening = func(header *types.Header) error {
+			checkNumber := header.Number.Uint64() % c.Config().Epoch
+			if checkNumber != common.EpocBlockOpening {
+				return nil
+			}
+			log.Info("-------------Is check number to set opening", "number", header.Number.Uint64())
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for set random opening", "err", err)
+				return fmt.Errorf("etherbase missing: %v", err)
+			}
+			if err := contracts.CreateTransactionSetOpening(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+				return fmt.Errorf("Fail to create tx set opening for importing block: %v", err)
 			}
 			return nil
 		}
@@ -681,7 +717,7 @@ func (s *Ethereum) Stop() error {
 
 func (s *Ethereum) GetClient() (*ethclient.Client, error) {
 	s.once.Do(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 		for {
 			select {

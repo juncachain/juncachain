@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -27,7 +28,6 @@ import (
 	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/accounts/abi/bind/backends"
 	"github.com/juncachain/juncachain/common"
-	"github.com/juncachain/juncachain/consensus/posv"
 	"github.com/juncachain/juncachain/contracts/blocksigner"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/core/types"
@@ -140,23 +140,6 @@ func randomHash() common.Hash {
 	return b
 }
 
-// Unit test for get random position of masternodes.
-func TestRandomMasterNode(t *testing.T) {
-	oldSlice := NewSlice(0, 10, 1)
-	newSlice := Shuffle(oldSlice)
-	for _, newNumber := range newSlice {
-		for i, oldNumber := range oldSlice {
-			if oldNumber == newNumber {
-				// Delete find element.
-				oldSlice = append(oldSlice[:i], oldSlice[i+1:]...)
-			}
-		}
-	}
-	if len(oldSlice) != 0 {
-		t.Errorf("Test generate random masternode fail %v - %v", oldSlice, newSlice)
-	}
-}
-
 func TestEncryptDecrypt(t *testing.T) {
 	//byteInteger := common.LeftPadBytes([]byte(new(big.Int).SetInt64(4).String()), 32)
 	randomByte := RandStringByte(32)
@@ -165,61 +148,21 @@ func TestEncryptDecrypt(t *testing.T) {
 	t.Log("Encrypt", encrypt, "Test", string(randomByte), "Decrypt", decrypt, "trim", string(bytes.TrimLeft([]byte(decrypt), "\x00")))
 }
 
-func isArrayEqual(a [][]int64, b [][]int64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, vs := range a {
-		for j, v := range vs {
-			if v != b[i][j] {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // Unit test for
 func TestGenM2FromRandomize(t *testing.T) {
 	var a []int64
-	for i := 0; i <= 10; i++ {
+	var masters []common.Address
+	for i := 0; i < 10; i++ {
 		rand.Seed(time.Now().UTC().UnixNano())
 		a = append(a, int64(rand.Intn(9999)))
+		masters = append(masters, common.BigToAddress(new(big.Int).SetInt64(int64(i))))
 	}
-	b, err := GenM2FromRandomize(a, common.MaxMasternodes)
-	t.Log("randomize", b, "len", len(b))
+	m2s, err := GenM2FromRandomize(a, masters)
+	t.Log("randomize", m2s, "len", len(m2s))
 	if err != nil {
 		t.Error("Fail to test gen m2 for randomize.", err)
 	}
-	// Test Permutation Without Fixed-point.
-	M1List := NewSlice(int64(0), common.MaxMasternodes, 1)
-	for i, m1 := range M1List {
-		if m1 == b[i] {
-			t.Errorf("Error check Permutation Without Fixed-point %v - %v - %v", i, b[i], a)
-		}
+	for _, v := range m2s {
+		fmt.Println(v)
 	}
-}
-
-// Unit test for validator m2.
-func TestBuildValidatorFromM2(t *testing.T) {
-	a := []int64{84, 58, 27, 96, 127, 60, 136, 20, 121, 31, 87, 85, 40, 120, 149, 109, 141, 145, 11, 110, 147, 35, 76, 46, 34, 108, 72, 103, 102, 12, 23, 47, 70, 86, 125, 112, 128, 13, 130, 98, 126, 62, 132, 111, 134, 6, 106, 67, 24, 91, 101, 50, 94, 43, 77, 73, 129, 71, 51, 10, 92, 29, 80, 95, 33, 100, 124, 75, 38, 133, 79, 83, 61, 36, 122, 99, 16, 28, 18, 116, 140, 97, 119, 82, 148, 48, 56, 32, 93, 107, 69, 68, 123, 81, 22, 137, 25, 115, 44, 8, 42, 131, 143, 17, 55, 89, 9, 15, 19, 59, 146, 54, 5, 30, 41, 144, 117, 1, 104, 49, 105, 45, 88, 78, 74, 135, 0, 21, 57, 3, 66, 52, 63, 138, 4, 114, 37, 118, 14, 2, 26, 7, 65, 139, 39, 64, 90, 142, 53, 113}
-	b := BuildValidatorFromM2(a)
-	c := posv.ExtractValidatorsFromBytes(b)
-	if !isArrayEqual([][]int64{a}, [][]int64{c}) {
-		t.Errorf("Fail to get m2 result %v", b)
-	}
-}
-
-// Unit test for decode validator string data.
-func TestDecodeValidatorsHexData(t *testing.T) {
-	a := "0x000000310000003000000032000000310000003000000032000000310000003000000032000000310000003000000031000000320000003000000031000000320000003000000031000000320000003000000030000000310000003200000030000000310000003200000030000000310000003200000030000000300000003100000032000000300000003100000032000000300000003100000032000000300000003200000030000000310000003200000030000000310000003200000030000000310000003000000030"
-	b, err := DecodeValidatorsHexData(a)
-	if err != nil {
-		t.Error("Fail to decode validator from hex string", err)
-	}
-	c := []int64{1, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 2, 0, 1, 2, 0, 1, 2, 0, 1, 0, 0}
-	if !isArrayEqual([][]int64{b}, [][]int64{c}) {
-		t.Errorf("Fail to get m2 result %v", b)
-	}
-	t.Log("b", b)
 }

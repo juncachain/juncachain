@@ -193,12 +193,12 @@ type PoSV struct {
 	client   *ethclient.Client
 
 	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
-	HookValidator           func(header *types.Header, signers []common.Address) ([]byte, error)
+	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
 	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainReader, state *state.StateDB, parentState *state.StateDB, header *types.Header) (error, map[string]interface{})
-	HookBlockSign           func(block *types.Block) error
-	HookSetRandomizeSecret  func(block *types.Block) error
-	HookSetRandomizeOpening func(block *types.Block) error
+	HookBlockSign           func(header *types.Header) error
+	HookSetRandomizeSecret  func(header *types.Header) error
+	HookSetRandomizeOpening func(header *types.Header) error
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -371,7 +371,7 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if err := extra.FromBytes(lastEpochHeader.Extra); err != nil {
 			return err
 		}
-		if len(extra.Epoch.Validators) == 0 {
+		if len(extra.Epoch.M1s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
 	}
@@ -407,7 +407,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	if err != nil {
 		return err
 	}
-	if extra.Epoch.Validators.M1(c.config.Epoch, number) != signer {
+	if extra.Epoch.M1(c.config.Epoch, number) != signer {
 		return errUnauthorizedSigner
 	}
 	return nil
@@ -416,11 +416,8 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Info("------------Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex())
-	// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
-	if header.Coinbase == common.ZeroAddress {
-		return nil
-	}
+	log.Info("------------Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
+
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
@@ -438,7 +435,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	c.lock.RUnlock()
 
 	//if number%c.config.Epoch != 0 {
-	header.Coinbase = extra.Epoch.Signer(c.config.Epoch, number)
+	header.Coinbase = extra.Epoch.M1(c.config.Epoch, number)
 
 	// Set the correct difficulty
 	if signer == header.Coinbase {
@@ -454,6 +451,10 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 	header.Extra = header.Extra[:extraVanity]
 	if number%c.config.Epoch == 0 {
+		// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
+		if header.Coinbase == common.ZeroAddress {
+			return nil
+		}
 		nextEpochExtra, err := c.nextExtra(number)
 		if err != nil {
 			return err
@@ -474,6 +475,28 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	if header.Time < uint64(time.Now().Unix()) {
 		header.Time = uint64(time.Now().Unix())
 	}
+
+	if c.HookSetRandomizeSecret != nil {
+		if err := c.HookSetRandomizeSecret(header); err != nil {
+			log.Error("HookSetRandomizeSecret", "err", err.Error())
+		}
+	}
+
+	if c.HookSetRandomizeOpening != nil {
+		if err := c.HookSetRandomizeOpening(header); err != nil {
+			log.Error("HookSetRandomizeOpening", "err", err.Error())
+		}
+	}
+
+	if c.HookBlockSign != nil {
+		if m2 := extra.Epoch.M2(c.config.Epoch, number); m2 == signer {
+			log.Info("-------------Is turn to validator block", "number", number, "validator", signer)
+			if err := c.HookBlockSign(header); err != nil {
+				log.Error("HookBlockSign", "err", err.Error())
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -510,7 +533,7 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Info("------------Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex())
+	log.Info("------------Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -527,13 +550,13 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
-	// Get master nodes
+	// Get extra data
 	extra, err := c.extra(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
 
-	if signer != extra.Epoch.Validators.M1(c.config.Epoch, number) {
+	if signer != extra.Epoch.M1(c.config.Epoch, number) {
 		return errors.New("No turn to seal")
 	}
 
@@ -544,7 +567,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 	// Wait until sealing is terminated or delay timeout.
-	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(time.Second*2))
+	log.Info("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(time.Second*2))
 	go func() {
 		select {
 		case <-stop:
@@ -697,19 +720,29 @@ func (c *PoSV) nextExtra(epoch uint64) (*Extra, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var masterNodes []common.Address
+
 	extra := new(Extra)
 	extra.Epoch.Checkpoint = epoch
 	for i, v := range ms {
 		if v.Stake.Cmp(c.config.MinStaked) < 0 {
 			continue
 		}
-		if i < common.MaxSigners {
-			extra.Epoch.MasterNodes = append(extra.Epoch.MasterNodes, MasterNode{Address: v.Address, Stake: v.Stake})
-		}
 		if i < common.MaxMasternodes {
-			extra.Epoch.Validators = append(extra.Epoch.Validators, MasterNode{Address: v.Address, Stake: v.Stake})
+			masterNodes = append(masterNodes, v.Address)
+		}
+		if i < common.MaxSigners {
+			extra.Epoch.M1s = append(extra.Epoch.M1s, MasterNode{Address: v.Address, Stake: v.Stake})
 		}
 	}
+
+	m2s, err := c.HookValidator(new(big.Int).SetInt64(int64(epoch)), masterNodes)
+	if err != nil {
+		return nil, err
+	}
+	extra.Epoch.M2s = m2s
+
 	c.checkpoints.Add(epoch, extra)
 	return extra, nil
 }
