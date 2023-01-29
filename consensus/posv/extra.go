@@ -81,6 +81,15 @@ func (e *Epoch) ToBytes() []byte {
 	return b
 }
 
+func (e *Epoch) IsM1(address common.Address) bool {
+	for _, v := range e.M1s {
+		if v.Address == address {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Epoch) M1(epochLength uint64, number uint64) common.Address {
 	if len(e.M1s) == 0 {
 		return common.Address{}

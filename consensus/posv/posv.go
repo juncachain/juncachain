@@ -232,7 +232,7 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Info("------------VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -240,6 +240,7 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
+	log.Trace("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -366,12 +367,11 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 
 	// If the block is a checkpoint block, verify the signer list
 	if number%c.config.Epoch == 0 {
-		lastEpochHeader := chain.GetHeaderByNumber(c.LastEpoch(number))
 		var extra Extra
-		if err := extra.FromBytes(lastEpochHeader.Extra); err != nil {
+		if err := extra.FromBytes(header.Extra); err != nil {
 			return err
 		}
-		if len(extra.Epoch.M1s) == 0 {
+		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
 	}
@@ -403,12 +403,15 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	if err != nil {
 		return err
 	}
-	extra, err := c.extra(chain, c.LastEpoch(number))
-	if err != nil {
-		return err
+	if signer == common.ZeroAddress {
+		return errors.New("nil signer")
 	}
-	if extra.Epoch.M1(c.config.Epoch, number) != signer {
-		return errUnauthorizedSigner
+	// when sync blocks,cannot get epoch header sometimes
+	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
+	if epoch != nil {
+		if !epoch.IsM1(signer) {
+			return errUnauthorizedSigner
+		}
 	}
 	return nil
 }
@@ -416,7 +419,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Info("------------Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
+	log.Trace("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
 
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
@@ -424,7 +427,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 
 	number := header.Number.Uint64()
 
-	extra, err := c.extra(chain, c.LastEpoch(number))
+	epoch, err := c.getEpoch(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
@@ -435,7 +438,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	c.lock.RUnlock()
 
 	//if number%c.config.Epoch != 0 {
-	header.Coinbase = extra.Epoch.M1(c.config.Epoch, number)
+	header.Coinbase = epoch.M1(c.config.Epoch, number)
 
 	// Set the correct difficulty
 	if signer == header.Coinbase {
@@ -455,11 +458,11 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if header.Coinbase == common.ZeroAddress {
 			return nil
 		}
-		nextEpochExtra, err := c.nextExtra(number)
+		epoch, err := c.makeEpoch(number)
 		if err != nil {
 			return err
 		}
-		header.Extra = append(header.Extra, nextEpochExtra.Epoch.ToBytes()...)
+		header.Extra = append(header.Extra, epoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -478,19 +481,19 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 
 	if c.HookSetRandomizeSecret != nil {
 		if err := c.HookSetRandomizeSecret(header); err != nil {
-			log.Error("HookSetRandomizeSecret", "err", err.Error())
+			log.Error("[PoSV]HookSetRandomizeSecret", "err", err.Error())
 		}
 	}
 
 	if c.HookSetRandomizeOpening != nil {
 		if err := c.HookSetRandomizeOpening(header); err != nil {
-			log.Error("HookSetRandomizeOpening", "err", err.Error())
+			log.Error("[PoSV]HookSetRandomizeOpening", "err", err.Error())
 		}
 	}
 
 	if c.HookBlockSign != nil {
-		if m2 := extra.Epoch.M2(c.config.Epoch, number); m2 == signer {
-			log.Info("-------------Is turn to validator block", "number", number, "validator", signer)
+		if m2 := epoch.M2(c.config.Epoch, number); m2 == signer {
+			log.Trace("[PoSV]Is turn to validator block", "number", number, "validator", signer)
 			if err := c.HookBlockSign(header); err != nil {
 				log.Error("HookBlockSign", "err", err.Error())
 			}
@@ -503,7 +506,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Info("------------Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = types.CalcUncleHash(nil)
@@ -512,7 +515,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Info("------------FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -533,7 +536,7 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Info("------------Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
+	log.Trace("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -551,13 +554,19 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	c.lock.RUnlock()
 
 	// Get extra data
-	extra, err := c.extra(chain, c.LastEpoch(number))
+	epoch, err := c.getEpoch(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
 
-	if signer != extra.Epoch.M1(c.config.Epoch, number) {
-		return errors.New("No turn to seal")
+	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
+	if signer != epoch.M1(c.config.Epoch, number) {
+		lastSignHeader := c.lastSignBlock(chain, number-1, signer)
+		if lastSignHeader != nil {
+			_, lastTurnTime := lastSignHeader.Number.Uint64(), lastSignHeader.Time
+			lastSealTime := lastTurnTime + uint64(len(epoch.M1Slice()))*c.config.Period
+			delay = delay + time.Duration(lastSealTime-header.Time)*time.Second
+		}
 	}
 
 	// Sign all the things!
@@ -566,13 +575,14 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return err
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
+
 	// Wait until sealing is terminated or delay timeout.
-	log.Info("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(time.Second*2))
+	log.Info("[PoSV]Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
 		select {
 		case <-stop:
 			return
-		case <-time.After(time.Second * 2):
+		case <-time.After(delay):
 		}
 
 		select {
@@ -590,7 +600,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	log.Info("------------CalcDifficulty", "time", time, "parent", parent)
+	log.Trace("[PoSV]CalcDifficulty", "time", time, "parent", parent)
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
@@ -603,7 +613,7 @@ func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *PoSV) SealHash(header *types.Header) common.Hash {
-	log.Info("------------SealHash", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]SealHash", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return SealHash(header)
 }
 
@@ -694,10 +704,10 @@ func (c *PoSV) LastEpoch(number uint64) uint64 {
 	return number - number%c.config.Epoch
 }
 
-func (c *PoSV) extra(chain consensus.ChainHeaderReader, epoch uint64) (*Extra, error) {
+func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {
 	v, ok := c.checkpoints.Get(epoch)
 	if ok {
-		return v.(*Extra), nil
+		return v.(*Epoch), nil
 	}
 
 	header := chain.GetHeaderByNumber(epoch)
@@ -706,25 +716,25 @@ func (c *PoSV) extra(chain consensus.ChainHeaderReader, epoch uint64) (*Extra, e
 		if err := extra.FromBytes(header.Extra); err != nil {
 			return nil, err
 		}
-		c.checkpoints.Add(epoch, extra)
-		return extra, nil
+		c.checkpoints.Add(epoch, &extra.Epoch)
+		return &extra.Epoch, nil
 	}
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) nextExtra(epoch uint64) (*Extra, error) {
-	if epoch%c.config.Epoch != 0 {
+func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
+	if number%c.config.Epoch != 0 {
 		return nil, errors.New("Not checkpoint")
 	}
-	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(epoch - 2))
+	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(number - 2))
 	if err != nil {
 		return nil, err
 	}
 
 	var masterNodes []common.Address
 
-	extra := new(Extra)
-	extra.Epoch.Checkpoint = epoch
+	epoch := new(Epoch)
+	epoch.Checkpoint = number
 	for i, v := range ms {
 		if v.Stake.Cmp(c.config.MinStaked) < 0 {
 			continue
@@ -733,18 +743,18 @@ func (c *PoSV) nextExtra(epoch uint64) (*Extra, error) {
 			masterNodes = append(masterNodes, v.Address)
 		}
 		if i < common.MaxSigners {
-			extra.Epoch.M1s = append(extra.Epoch.M1s, MasterNode{Address: v.Address, Stake: v.Stake})
+			epoch.M1s = append(epoch.M1s, MasterNode{Address: v.Address, Stake: v.Stake})
 		}
 	}
 
-	m2s, err := c.HookValidator(new(big.Int).SetInt64(int64(epoch)), masterNodes)
+	m2s, err := c.HookValidator(new(big.Int).SetInt64(int64(number)), masterNodes)
 	if err != nil {
 		return nil, err
 	}
-	extra.Epoch.M2s = m2s
+	epoch.M2s = m2s
 
-	c.checkpoints.Add(epoch, extra)
-	return extra, nil
+	c.checkpoints.Add(epoch, epoch)
+	return epoch, nil
 }
 
 func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
@@ -778,4 +788,22 @@ func (c *PoSV) initClient() {
 			}
 		}
 	})
+}
+
+func (c *PoSV) lastSignBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
+	for {
+		header := chain.GetHeaderByNumber(number)
+		if header == nil {
+			break
+		}
+		if header.Coinbase == signer {
+			c.recents.Add(signer, header.Number.Uint64())
+			return header
+		}
+		number = number - 1
+		if number == 0 {
+			break
+		}
+	}
+	return nil
 }
