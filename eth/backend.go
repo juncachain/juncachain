@@ -19,7 +19,6 @@ package eth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
@@ -55,6 +54,7 @@ import (
 	"github.com/juncachain/juncachain/params"
 	"github.com/juncachain/juncachain/rlp"
 	"github.com/juncachain/juncachain/rpc"
+	"github.com/pkg/errors"
 	"math/big"
 	"runtime"
 	"sort"
@@ -389,7 +389,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			for i := number - 1; i >= lastNumber; i-- {
 				hd := chain.GetHeaderByNumber(i)
 				if hd == nil {
-					return nil, errors.New("header is nil")
+					return nil, errors.Errorf("header %d is nil", lastNumber+i)
 				}
 				signer, err := c.Author(hd)
 				if err != nil {
@@ -490,9 +490,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 			for i := number - 1; i >= lastNumber; i-- {
-				hd := chain.GetHeaderByNumber(lastNumber + uint64(i))
+				hd := chain.GetHeaderByNumber(i)
 				if hd == nil {
-					return nil, errors.New("header is nil")
+					return nil, errors.Errorf("header %d is nil", i)
 				}
 				signer, err := c.Author(hd)
 				if err != nil {

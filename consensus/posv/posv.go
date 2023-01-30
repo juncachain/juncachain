@@ -463,9 +463,10 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 			return err
 		}
 		if c.HookPenalty != nil {
+			log.Info("[PoSV]HookPenalty", "number", header.Number)
 			penaltys, err := c.HookPenalty(chain, header)
 			if err != nil {
-				log.Error("HookPenalty", "err", err)
+				log.Error("[PoSV]HookPenalty", "err", err)
 			}
 			if len(penaltys) > 0 {
 				nextEpoch.Penalties = make([]common.Address, len(penaltys))
