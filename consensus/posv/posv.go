@@ -20,10 +20,12 @@ package posv
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/big"
-	"strconv"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -52,8 +54,6 @@ const (
 	inmemorySignatures = 4096 // Number of recent block signatures to keep in memory
 
 	wiggleTime = 500 * time.Millisecond // Random delay (per signer) to allow concurrent signers
-
-	M2ByteLength = 4
 )
 
 const (
@@ -195,7 +195,7 @@ type PoSV struct {
 	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
 	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
 	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
-	HookReward              func(chain consensus.ChainReader, state *state.StateDB, parentState *state.StateDB, header *types.Header) (error, map[string]interface{})
+	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
 	HookBlockSign           func(header *types.Header) error
 	HookSetRandomizeSecret  func(header *types.Header) error
 	HookSetRandomizeOpening func(header *types.Header) error
@@ -212,7 +212,7 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	// Allocate the snapshot caches and create the engine
 	recents, _ := lru.NewARC(inmemorySnapshots)
 	signatures, _ := lru.NewARC(inmemorySignatures)
-	checkpoints, _ := lru.NewARC(inmemorySignatures)
+	checkpoints, _ := lru.NewARC(inmemorySnapshots)
 
 	return &PoSV{
 		config:      &conf,
@@ -232,7 +232,7 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Trace("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Info("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -240,7 +240,7 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Trace("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
+	log.Info("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -419,7 +419,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Trace("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
+	log.Info("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
 
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
@@ -506,7 +506,22 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Trace("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Info("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
+		log.Info("[PoSV]HookReward", "number", header.Number)
+		rewards, err := c.HookReward(chain, state, header)
+		if err != nil {
+			log.Crit("[PoSV]HookReward", "err", err)
+		}
+
+		data, err := json.Marshal(rewards)
+		if err == nil {
+			err = ioutil.WriteFile(filepath.Join(c.config.InstanceDir, header.Number.String()+"."+header.Hash().Hex()), data, 0644)
+		}
+		if err != nil {
+			log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
+		}
+	}
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = types.CalcUncleHash(nil)
@@ -515,7 +530,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Trace("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Info("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -536,7 +551,7 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Trace("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
+	log.Info("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -563,8 +578,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	if signer != epoch.M1(c.config.Epoch, number) {
 		lastSignHeader := c.lastSignBlock(chain, number-1, signer)
 		if lastSignHeader != nil {
-			_, lastTurnTime := lastSignHeader.Number.Uint64(), lastSignHeader.Time
-			lastSealTime := lastTurnTime + uint64(len(epoch.M1Slice()))*c.config.Period
+			lastSealTime := lastSignHeader.Time + uint64(len(epoch.M1Slice()))*c.config.Period
 			delay = delay + time.Duration(lastSealTime-header.Time)*time.Second
 		}
 	}
@@ -678,23 +692,6 @@ func encodeSigHeader(w io.Writer, header *types.Header) {
 	}
 }
 
-// ExtractValidatorsFromBytes Extract validators from byte array.
-func ExtractValidatorsFromBytes(byteValidators []byte) []int64 {
-	lenValidator := len(byteValidators) / M2ByteLength
-	var validators []int64
-	for i := 0; i < lenValidator; i++ {
-		trimByte := bytes.Trim(byteValidators[i*M2ByteLength:(i+1)*M2ByteLength], "\x00")
-		intNumber, err := strconv.Atoi(string(trimByte))
-		if err != nil {
-			log.Error("Can not convert string to integer", "error", err)
-			return []int64{}
-		}
-		validators = append(validators, int64(intNumber))
-	}
-
-	return validators
-}
-
 func (c *PoSV) LastEpoch(number uint64) uint64 {
 	if number <= c.config.Epoch {
 		return 0
@@ -735,6 +732,7 @@ func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
 
 	epoch := new(Epoch)
 	epoch.Checkpoint = number
+	epoch.Reward = new(big.Int).Set(c.config.Reward)
 	for i, v := range ms {
 		if v.Stake.Cmp(c.config.MinStaked) < 0 {
 			continue
@@ -791,11 +789,12 @@ func (c *PoSV) initClient() {
 }
 
 func (c *PoSV) lastSignBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
-	for {
+	for i := 0; i < common.MaxSigners; i++ {
 		header := chain.GetHeaderByNumber(number)
 		if header == nil {
 			break
 		}
+		// header.Coinbase indicate who's turn to sign block
 		if header.Coinbase == signer {
 			c.recents.Add(signer, header.Number.Uint64())
 			return header

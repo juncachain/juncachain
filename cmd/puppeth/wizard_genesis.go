@@ -64,7 +64,7 @@ func (w *wizard) makeGenesis() {
 	}
 	// Figure out which consensus engine to choose
 	fmt.Println()
-	fmt.Println("Which consensus engine to use? (default = clique)")
+	fmt.Println("Which consensus engine to use? (default = PoSV)")
 	fmt.Println(" 1. Ethash - proof-of-work")
 	fmt.Println(" 2. Clique - proof-of-authority")
 	fmt.Println(" 3. PoSV   - proof-of-stake voting")
@@ -76,7 +76,7 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Ethash = new(params.EthashConfig)
 		genesis.ExtraData = make([]byte, 32)
 
-	case choice == "" || choice == "2":
+	case choice == "2":
 		// In the case of clique, configure the consensus parameters
 		genesis.Difficulty = big.NewInt(1)
 		genesis.Config.Clique = &params.CliqueConfig{
@@ -113,14 +113,16 @@ func (w *wizard) makeGenesis() {
 		for i, signer := range signers {
 			copy(genesis.ExtraData[32+i*common.AddressLength:], signer[:])
 		}
-	case choice == "3":
+	case choice == "" || choice == "3":
 		// In the case of posv, configure the consensus parameters
 		genesis.Difficulty = big.NewInt(1)
 		base := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 		genesis.Config.Posv = &params.PoSVConfig{
-			Period:    2,
-			Epoch:     900,
-			MinStaked: new(big.Int).Mul(big.NewInt(50000), base),
+			Period:     2,
+			Epoch:      900,
+			MinStaked:  new(big.Int).Mul(big.NewInt(50000), base),
+			Reward:     new(big.Int).Mul(big.NewInt(250), base),
+			Foundation: common.Address{},
 		}
 		fmt.Println()
 		fmt.Println("How many seconds should blocks take? (default = 2)")
@@ -133,6 +135,14 @@ func (w *wizard) makeGenesis() {
 		fmt.Println()
 		fmt.Println("How many min tokens should be staked? (default = 50000)")
 		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), base)
+
+		fmt.Println()
+		fmt.Println("How many Ethers should be rewarded to masternode per epoch? (default = 250)")
+		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(250))), base)
+
+		fmt.Println()
+		fmt.Println("What is foundation wallet address? (default = 0x0000000000004a756E6361466F75646174696f6E)")
+		genesis.Config.Posv.Foundation = w.readDefaultAddress(common.HexToAddress(common.JuncaFoudation))
 
 		// We also need the initial list of signers
 		fmt.Println()
@@ -154,6 +164,7 @@ func (w *wizard) makeGenesis() {
 		sort.Sort(signers)
 		var extra posv.Extra
 		extra.Epoch.Checkpoint = 0
+		extra.Epoch.Reward = new(big.Int)
 		for _, v := range signers {
 			extra.Epoch.M1s = append(extra.Epoch.M1s, posv.MasterNode{
 				Address: v.Address,

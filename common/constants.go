@@ -31,7 +31,7 @@ const (
 
 const (
 	RewardMasterPercent        = int64(40)
-	RewardVoterPercent         = uint64(50)
+	RewardVoterPercent         = int64(50)
 	RewardFoundationPercent    = int64(10)
 	EpocBlockSecret            = 800
 	EpocBlockOpening           = 850

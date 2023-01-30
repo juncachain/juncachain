@@ -32,6 +32,7 @@ import (
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/core/bloombits"
 	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/state/pruner"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/core/vm"
@@ -372,6 +373,102 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return fmt.Errorf("Fail to create tx set opening for importing block: %v", err)
 			}
 			return nil
+		}
+
+		c.HookReward = func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[string]interface{}, error) {
+			number := header.Number.Uint64()
+			if number == 0 || number%c.Config().Epoch != 0 {
+				return nil, nil
+			}
+			lastNumber := number - c.Config().Epoch + 1
+
+			var signers []common.Address
+			for i := number - 1; i >= lastNumber; i-- {
+				hd := chain.GetHeaderByNumber(i)
+				if hd == nil {
+					return nil, errors.New("header is nil")
+				}
+				signer, err := c.Author(hd)
+				if err != nil {
+					return nil, err
+				}
+				signers = append(signers, signer)
+			}
+
+			type Stat struct {
+				Address common.Address `json:"address"`
+				Cap     *big.Int       `json:"cap"`
+				Reward  *big.Int       `json:"reward"`
+			}
+			var rewards = make(map[string]interface{})
+			var candidateStat = make(map[common.Address]*Stat)
+			var voterStat = make(map[common.Address]*Stat)
+			var totalCap = new(big.Int)
+			for _, signer := range signers {
+				voters := contracts.GetVotersFromState(stateBlock, signer)
+				for _, v := range voters {
+					cap := contracts.GetVoterCapFromState(stateBlock, signer, v)
+					totalCap = new(big.Int).Add(totalCap, cap)
+
+					{
+						st, ok := voterStat[v]
+						if ok {
+							st.Cap = new(big.Int).Add(st.Cap, cap)
+						} else {
+							voterStat[v] = &Stat{
+								Address: v,
+								Cap:     cap,
+								Reward:  new(big.Int),
+							}
+						}
+					}
+					{
+						st, ok := candidateStat[v]
+						if ok {
+							st.Cap = new(big.Int).Add(st.Cap, cap)
+						} else {
+							candidateStat[signer] = &Stat{
+								Address: signer,
+								Cap:     cap,
+								Reward:  new(big.Int),
+							}
+						}
+					}
+				}
+			}
+
+			rewardMaster := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardMasterPercent))
+			rewardMaster = new(big.Int).Div(rewardMaster, new(big.Int).SetInt64(100))
+			for _, v := range candidateStat {
+				r := new(big.Int).Div(v.Cap, totalCap)
+				v.Reward = new(big.Int).Mul(rewardMaster, r)
+				if v.Reward.Cmp(new(big.Int)) > 0 {
+					stateBlock.AddBalance(v.Address, v.Reward)
+				}
+			}
+			rewards["signers"] = candidateStat
+
+			rewardVoter := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardVoterPercent))
+			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
+			for _, v := range voterStat {
+				r := new(big.Int).Div(v.Cap, totalCap)
+				v.Reward = new(big.Int).Mul(rewardVoter, r)
+				if v.Reward.Cmp(new(big.Int)) > 0 {
+					stateBlock.AddBalance(v.Address, v.Reward)
+				}
+			}
+			rewards["voters"] = voterStat
+
+			rewardFoundation := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+			rewardFoundation = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
+			rewards["foundation"] = struct {
+				Address common.Address `json:"address"`
+				Reward  *big.Int       `json:"reward"`
+			}{c.Config().Foundation, rewardFoundation}
+			if rewardFoundation.Cmp(new(big.Int)) > 0 {
+				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
+			}
+			return rewards, nil
 		}
 	}
 

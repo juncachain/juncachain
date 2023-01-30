@@ -33,8 +33,6 @@ import (
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/accounts/abi/bind"
 	"github.com/juncachain/juncachain/common"
-	"github.com/juncachain/juncachain/common/hexutil"
-	"github.com/juncachain/juncachain/consensus/posv"
 	"github.com/juncachain/juncachain/contracts/blocksigner/contract"
 	randomizeContract "github.com/juncachain/juncachain/contracts/randomize/contract"
 	contractValidator "github.com/juncachain/juncachain/contracts/validator/contract"
@@ -331,16 +329,6 @@ func GenM2FromRandomize(randomizes []int64, masternodes []common.Address) ([]com
 		m2s[indexs[i]] = v
 	}
 	return m2s, nil
-}
-
-// DecodeValidatorsHexData Decode validator hex string.
-func DecodeValidatorsHexData(validatorsStr string) ([]int64, error) {
-	validatorsByte, err := hexutil.Decode(validatorsStr)
-	if err != nil {
-		return nil, err
-	}
-
-	return posv.ExtractValidatorsFromBytes(validatorsByte), nil
 }
 
 // DecryptRandomizeFromSecretsAndOpening Decrypt randomize from secrets and opening.

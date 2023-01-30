@@ -63,6 +63,7 @@ type Epoch struct {
 	Checkpoint uint64           `json:"checkpoint"`
 	M1s        MasterNodes      `json:"m1s"` // max 99
 	M2s        []common.Address `json:"m2s"` // max 150
+	Reward     *big.Int         `json:"reward"`
 	Penalties  []common.Address `json:"penalties"`
 }
 
