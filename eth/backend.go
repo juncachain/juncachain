@@ -385,7 +385,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				lastNumber = 1
 			}
 
-			var signers []common.Address
+			var signers = make(map[common.Address]common.Address)
 			for i := number - 1; i >= lastNumber; i-- {
 				hd := chain.GetHeaderByNumber(i)
 				if hd == nil {
@@ -395,7 +395,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				if err != nil {
 					return nil, err
 				}
-				signers = append(signers, signer)
+				signers[signer] = signer
+				//signers = append(signers, signer)
 			}
 
 			type Stat struct {
