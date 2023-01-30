@@ -486,6 +486,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 
 			var penaltys []common.Address
+			var exists = make(map[common.Address]bool)
 			epoch, err := c.GetEpoch(chain, c.LastEpoch(number))
 			if err != nil {
 				return nil, err
@@ -500,8 +501,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					return nil, err
 				}
 				turn := epoch.M1(c.Config().Epoch, i)
-				if signer != turn {
+				if signer != turn && !exists[turn] {
 					penaltys = append(penaltys, turn)
+					exists[turn] = true
 				}
 			}
 			return penaltys, nil
