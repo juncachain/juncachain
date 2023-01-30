@@ -194,7 +194,7 @@ type PoSV struct {
 
 	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
 	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
-	HookPenalty             func(chain consensus.ChainReader, blockNumberEpoc uint64) ([]common.Address, error)
+	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
 	HookBlockSign           func(header *types.Header) error
 	HookSetRandomizeSecret  func(header *types.Header) error
@@ -458,11 +458,51 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if header.Coinbase == common.ZeroAddress {
 			return nil
 		}
-		epoch, err := c.makeEpoch(number)
+		nextEpoch, err := c.makeEpoch(number)
 		if err != nil {
 			return err
 		}
-		header.Extra = append(header.Extra, epoch.ToBytes()...)
+		if c.HookPenalty != nil {
+			penaltys, err := c.HookPenalty(chain, header)
+			if err != nil {
+				log.Error("HookPenalty", "err", err)
+			}
+			if len(penaltys) > 0 {
+				nextEpoch.Penalties = make([]common.Address, len(penaltys))
+				for i, v := range penaltys {
+					nextEpoch.Penalties[i] = v
+					log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
+				}
+			}
+			penalized := func(address common.Address) bool {
+				for _, v := range penaltys {
+					if v == address {
+						return true
+					}
+				}
+				return false
+			}
+
+			if len(penaltys) > 0 {
+				var m1s MasterNodes
+				var m2s []common.Address
+				for _, v := range nextEpoch.M1s {
+					if !penalized(v.Address) {
+						m1s = append(m1s, v)
+					}
+				}
+				for _, v := range nextEpoch.M2s {
+					if !penalized(v) {
+						m2s = append(m2s, v)
+					}
+				}
+				if len(m1s) > 0 && len(m2s) > 0 {
+					nextEpoch.M1s = m1s
+					nextEpoch.M2s = m2s
+				}
+			}
+		}
+		header.Extra = append(header.Extra, nextEpoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -699,6 +739,10 @@ func (c *PoSV) LastEpoch(number uint64) uint64 {
 		return number - c.config.Epoch
 	}
 	return number - number%c.config.Epoch
+}
+
+func (c *PoSV) GetEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {
+	return c.getEpoch(chain, epoch)
 }
 
 func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {

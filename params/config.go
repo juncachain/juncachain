@@ -413,30 +413,39 @@ func (c *CliqueConfig) String() string {
 
 // PoSVConfig is the consensus engine configs for proof-of-voting based sealing.
 type PoSVConfig struct {
-	Period    uint64   `json:"period"` // Number of seconds between blocks to enforce
-	Epoch     uint64   `json:"epoch"`  // Epoch length to reset votes and checkpoint
-	MinStaked *big.Int `json:"minStaked"`
+	Period      uint64         `json:"period"`    // Number of seconds between blocks to enforce
+	Epoch       uint64         `json:"epoch"`     // Epoch length to reset votes and checkpoint
+	MinStaked   *big.Int       `json:"minStaked"` // validator min staked
+	Reward      *big.Int       `json:"reward"`    // reward per epoch
+	Foundation  common.Address `json:"foundation"`
+	InstanceDir string         `json:"-"`
 }
 
 func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
 	type PoSVConfig struct {
-		Period    uint64
-		Epoch     uint64
-		MinStaked *math.HexOrDecimal256
+		Period     uint64
+		Epoch      uint64
+		MinStaked  *math.HexOrDecimal256
+		Reward     *math.HexOrDecimal256
+		Foundation common.Address
 	}
 
 	var enc PoSVConfig
 	enc.Period = pc.Period
 	enc.Epoch = pc.Epoch
 	enc.MinStaked = (*math.HexOrDecimal256)(pc.MinStaked)
+	enc.Reward = (*math.HexOrDecimal256)(pc.Reward)
+	enc.Foundation = pc.Foundation
 	return json.Marshal(&enc)
 }
 
 func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
 	type PoSVConfig struct {
-		Period    uint64
-		Epoch     uint64
-		MinStaked *math.HexOrDecimal256
+		Period     uint64
+		Epoch      uint64
+		MinStaked  *math.HexOrDecimal256
+		Reward     *math.HexOrDecimal256
+		Foundation common.Address
 	}
 	var dec PoSVConfig
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -447,6 +456,10 @@ func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
 	if dec.MinStaked != nil {
 		pc.MinStaked = (*big.Int)(dec.MinStaked)
 	}
+	if dec.Reward != nil {
+		pc.Reward = (*big.Int)(dec.Reward)
+	}
+	pc.Foundation = dec.Foundation
 	return nil
 }
 

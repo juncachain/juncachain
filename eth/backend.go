@@ -380,7 +380,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if number == 0 || number%c.Config().Epoch != 0 {
 				return nil, nil
 			}
-			lastNumber := number - c.Config().Epoch + 1
+			lastNumber := number - c.Config().Epoch
+			if lastNumber == 0 {
+				lastNumber = 1
+			}
 
 			var signers []common.Address
 			for i := number - 1; i >= lastNumber; i-- {
@@ -469,6 +472,38 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
 			}
 			return rewards, nil
+		}
+
+		c.HookPenalty = func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+			number := header.Number.Uint64()
+			if number == 0 || number%c.Config().Epoch != 0 {
+				return nil, nil
+			}
+			lastNumber := number - c.Config().Epoch
+			if lastNumber == 0 {
+				lastNumber = 1
+			}
+
+			var penaltys []common.Address
+			epoch, err := c.GetEpoch(chain, c.LastEpoch(number))
+			if err != nil {
+				return nil, err
+			}
+			for i := number - 1; i >= lastNumber; i-- {
+				hd := chain.GetHeaderByNumber(lastNumber + uint64(i))
+				if hd == nil {
+					return nil, errors.New("header is nil")
+				}
+				signer, err := c.Author(hd)
+				if err != nil {
+					return nil, err
+				}
+				turn := epoch.M1(c.Config().Epoch, i)
+				if signer != turn {
+					penaltys = append(penaltys, turn)
+				}
+			}
+			return penaltys, nil
 		}
 	}
 
