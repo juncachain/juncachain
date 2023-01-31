@@ -344,7 +344,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if checkNumber != common.EpocBlockSecret {
 				return nil
 			}
-			log.Info("-------------Is check number to set secret", "number", header.Number.Uint64())
+			log.Info("[PoSV]Is check number to set secret", "number", header.Number.Uint64())
 
 			eb, err := eth.Etherbase()
 			if err != nil {
@@ -363,7 +363,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if checkNumber != common.EpocBlockOpening {
 				return nil
 			}
-			log.Info("-------------Is check number to set opening", "number", header.Number.Uint64())
+			log.Info("[PoSV]Is check number to set opening", "number", header.Number.Uint64())
 			eb, err := eth.Etherbase()
 			if err != nil {
 				log.Error("Cannot get etherbase for set random opening", "err", err)
