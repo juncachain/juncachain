@@ -195,7 +195,7 @@ func TestRewardBalance(t *testing.T) {
 func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common.Address, totalReward *big.Int, validator *contractValidator.JuncaValidator) (map[common.Address]*big.Int, error) {
 	owner := GetCandidatesOwnerBySigner(validator, masterAddr)
 	balances := make(map[common.Address]*big.Int)
-	rewardMaster := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardMasterPercent))
+	rewardMaster := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardM1Percent))
 	rewardMaster = new(big.Int).Div(rewardMaster, new(big.Int).SetInt64(100))
 	balances[owner] = rewardMaster
 	// Get voters for masternode.
@@ -207,7 +207,7 @@ func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common
 	}
 
 	if len(voters) > 0 {
-		totalVoterReward := new(big.Int).Mul(totalReward, new(big.Int).SetUint64(common.RewardVoterPercent))
+		totalVoterReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardVoterPercent))
 		totalVoterReward = new(big.Int).Div(totalVoterReward, new(big.Int).SetUint64(100))
 		totalCap := new(big.Int)
 		// Get voters capacities.
@@ -239,9 +239,9 @@ func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common
 		}
 	}
 
-	foudationReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardFoundationPercent))
-	foudationReward = new(big.Int).Div(foudationReward, new(big.Int).SetInt64(100))
-	balances[foudationWalletAddr] = foudationReward
+	foundationReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+	foundationReward = new(big.Int).Div(foundationReward, new(big.Int).SetInt64(100))
+	balances[foudationWalletAddr] = foundationReward
 
 	jsonHolders, err := json.Marshal(balances)
 	if err != nil {

@@ -30,22 +30,12 @@ const (
 )
 
 const (
-	RewardMasterPercent        = int64(40)
-	RewardVoterPercent         = int64(50)
-	RewardFoundationPercent    = int64(10)
-	EpocBlockSecret            = 800
-	EpocBlockOpening           = 850
-	EpocBlockRandomize         = 900
-	MaxMasternodes             = 150
-	MaxSigners                 = 99
-	LimitPenaltyEpoch          = 4
-	BlocksPerYear              = uint64(15768000)
-	LimitThresholdNonceInQueue = 10
-	DefaultMinGasPrice         = 250000000
-	MergeSignRange             = 15
-	RangeReturnSigner          = 150
-	MinimunMinerBlockPerEpoch  = 1
-	IgnoreSignerCheckBlock     = uint64(14458500)
-	OneYear                    = uint64(365 * 86400)
-	LiquidateLendingTradeBlock = uint64(100)
+	RewardM1Percent         = int64(40)
+	RewardM2Percent         = int64(10)
+	RewardVoterPercent      = int64(40)
+	RewardFoundationPercent = int64(10)
+	MaxMasternodes          = 150
+	MaxSigners              = 99
+	EpochBlockSecret        = 10
+	EpochBlockOpening       = 5
 )

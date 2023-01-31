@@ -19,6 +19,7 @@ package eth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
@@ -341,7 +342,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 		c.HookSetRandomizeSecret = func(header *types.Header) error {
 			checkNumber := header.Number.Uint64() % c.Config().Epoch
-			if checkNumber != common.EpocBlockSecret {
+			if c.Config().Epoch-checkNumber != common.EpochBlockSecret {
 				return nil
 			}
 			log.Info("[PoSV]Is check number to set secret", "number", header.Number.Uint64())
@@ -360,7 +361,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 		c.HookSetRandomizeOpening = func(header *types.Header) error {
 			checkNumber := header.Number.Uint64() % c.Config().Epoch
-			if checkNumber != common.EpocBlockOpening {
+			if c.Config().Epoch-checkNumber != common.EpochBlockOpening {
 				return nil
 			}
 			log.Info("[PoSV]Is check number to set opening", "number", header.Number.Uint64())
@@ -413,7 +414,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				for _, v := range voters {
 					cap := contracts.GetVoterCapFromState(stateBlock, signer, v)
 					totalCap = new(big.Int).Add(totalCap, cap)
-
 					{
 						st, ok := voterStat[v]
 						if ok {
@@ -441,22 +441,20 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
-			rewardMaster := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardMasterPercent))
-			rewardMaster = new(big.Int).Div(rewardMaster, new(big.Int).SetInt64(100))
+			rewardM1 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM1Percent))
+			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
 			for _, v := range candidateStat {
-				r := new(big.Int).Div(v.Cap, totalCap)
-				v.Reward = new(big.Int).Mul(rewardMaster, r)
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["signers"] = candidateStat
+			rewards["m1"] = candidateStat
 
 			rewardVoter := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardVoterPercent))
 			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
 			for _, v := range voterStat {
-				r := new(big.Int).Div(v.Cap, totalCap)
-				v.Reward = new(big.Int).Mul(rewardVoter, r)
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
@@ -464,7 +462,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rewards["voters"] = voterStat
 
 			rewardFoundation := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardFoundationPercent))
-			rewardFoundation = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
+			rewardFoundation = new(big.Int).Div(rewardFoundation, new(big.Int).SetInt64(100))
 			rewards["foundation"] = struct {
 				Address common.Address `json:"address"`
 				Reward  *big.Int       `json:"reward"`
@@ -472,6 +470,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if rewardFoundation.Cmp(new(big.Int)) > 0 {
 				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
 			}
+
+			bz, _ := json.Marshal(rewards)
+			_ = chainDb.Put([]byte(fmt.Sprintf("JUNCA-EPOCH-%d", number/c.Config().Epoch)), bz)
 			return rewards, nil
 		}
 
