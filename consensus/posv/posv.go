@@ -609,19 +609,33 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	signer, signFn := c.signer, c.signFn
 	c.lock.RUnlock()
 
-	// Get extra data
+	// Get last epoch-header extra data
 	epoch, err := c.getEpoch(chain, c.LastEpoch(number))
 	if err != nil {
 		return err
 	}
+	if !epoch.IsM1(signer) {
+		return errors.Errorf("coinbase:%s is not M1", signer.Hex())
+	}
 
-	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
-	if signer != epoch.M1(c.config.Epoch, number) {
-		lastSignHeader := c.lastSignBlock(chain, number-1, signer)
-		if lastSignHeader != nil {
-			lastSealTime := lastSignHeader.Time + uint64(len(epoch.M1Slice()))*c.config.Period
-			delay = delay + time.Duration(lastSealTime-header.Time)*time.Second
+	// If we're amongst the recent signers, wait for the next block
+	// only check recent signers if there are more than one signer.
+	if number%c.config.Epoch != 1 {
+		parent := chain.GetHeaderByNumber(number - 1)
+		if parent != nil && parent.Number.Uint64() > 0 && epoch.M1Length() > 1 {
+			if pSigner, err := c.Author(parent); err != nil {
+				return err
+			} else if pSigner == signer {
+				return errors.New("Signed recently, must wait for others")
+			}
 		}
+	}
+
+	// Sweet, the protocol permits us to sign the block, wait for our time
+	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
+	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
+	if nextNumber > number {
+		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second
 	}
 
 	// Sign all the things!
@@ -833,7 +847,29 @@ func (c *PoSV) initClient() {
 	})
 }
 
-func (c *PoSV) lastSignBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
+func (c *PoSV) lastSignedBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
+	for i := 0; i < common.MaxSigners; i++ {
+		header := chain.GetHeaderByNumber(number)
+		if header == nil {
+			break
+		}
+		address, err := c.Author(header)
+		if err != nil {
+			log.Crit("Author", "err", err, "number", header.Number.Uint64())
+		}
+		if address == signer {
+			c.recents.Add(signer, header.Number.Uint64())
+			return header
+		}
+		number = number - 1
+		if number == 0 {
+			break
+		}
+	}
+	return nil
+}
+
+func (c *PoSV) lastTurnToSignBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
 	for i := 0; i < common.MaxSigners; i++ {
 		header := chain.GetHeaderByNumber(number)
 		if header == nil {
@@ -850,4 +886,9 @@ func (c *PoSV) lastSignBlock(chain consensus.ChainHeaderReader, number uint64, s
 		}
 	}
 	return nil
+}
+
+func JSONPretty(v interface{}) string {
+	bz, _ := json.MarshalIndent(v, "", " ")
+	return string(bz)
 }

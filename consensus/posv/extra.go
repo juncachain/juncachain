@@ -2,6 +2,7 @@ package posv
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"math/big"
 
@@ -96,7 +97,20 @@ func (e *Epoch) M1(epochLength uint64, number uint64) common.Address {
 		return common.Address{}
 	}
 	mod := number % epochLength
-	return e.M1s[int(mod)%len(e.M1s)].Address
+	index := int(mod)%len(e.M1s) - 1
+	if index < 0 {
+		index = len(e.M1s) - 1
+	}
+	return e.M1s[index].Address
+}
+
+func (e *Epoch) NextTurn(epochLength uint64, number uint64, m1 common.Address) uint64 {
+	for i := number; i < number+epochLength; i++ {
+		if e.M1(epochLength, i) == m1 {
+			return i
+		}
+	}
+	return number + epochLength
 }
 
 func (e *Epoch) M1Slice() []common.Address {
@@ -105,6 +119,19 @@ func (e *Epoch) M1Slice() []common.Address {
 		m1s = append(m1s, v.Address)
 	}
 	return m1s
+}
+
+func (e *Epoch) M1Index(signer common.Address) int {
+	for i, v := range e.M1s {
+		if signer == v.Address {
+			return i
+		}
+	}
+	return -1
+}
+
+func (e *Epoch) M1Length() int {
+	return len(e.M1s)
 }
 
 func (e *Epoch) M2(epochLength uint64, number uint64) common.Address {
@@ -121,4 +148,13 @@ func (e *Epoch) M2Slice() []common.Address {
 		m2s = append(m2s, v)
 	}
 	return m2s
+}
+
+func (e *Epoch) M2Length() int {
+	return len(e.M2s)
+}
+
+func (e *Epoch) String() string {
+	bz, _ := json.Marshal(e)
+	return string(bz)
 }
