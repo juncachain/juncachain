@@ -533,10 +533,14 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 
 	if c.HookBlockSign != nil {
-		if m2 := epoch.M2(c.config.Epoch, number); m2 == signer {
-			log.Trace("[PoSV]Is turn to validator block", "number", number, "validator", signer)
-			if err := c.HookBlockSign(header); err != nil {
-				log.Error("HookBlockSign", "err", err.Error())
+		if m2s := epoch.M2(c.config.Epoch, number); len(m2s) > 0 {
+			for _, m2 := range m2s {
+				if m2 == signer {
+					log.Trace("[PoSV]Is turn to validator block", "number", number, "validator", signer)
+					if err := c.HookBlockSign(header); err != nil {
+						log.Error("HookBlockSign", "err", err.Error())
+					}
+				}
 			}
 		}
 	}

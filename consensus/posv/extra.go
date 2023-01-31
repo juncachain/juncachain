@@ -134,12 +134,23 @@ func (e *Epoch) M1Length() int {
 	return len(e.M1s)
 }
 
-func (e *Epoch) M2(epochLength uint64, number uint64) common.Address {
+func (e *Epoch) M2(epochLength uint64, number uint64) []common.Address {
 	if len(e.M2s) == 0 {
-		return common.Address{}
+		return nil
 	}
+	var m2s []common.Address
 	mod := number % epochLength
-	return e.M2s[int(mod)%len(e.M1s)]
+	index := int(mod) % len(e.M2s)
+	m2s = append(m2s, e.M2s[index])
+
+	index = index + 1
+	if index == len(e.M2s) {
+		index = 0
+	}
+	if e.M2s[index] != m2s[0] {
+		m2s = append(m2s, e.M2s[index])
+	}
+	return m2s
 }
 
 func (e *Epoch) M2Slice() []common.Address {

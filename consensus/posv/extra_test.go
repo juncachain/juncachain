@@ -71,3 +71,20 @@ func TestM1(t *testing.T) {
 		fmt.Println(i, " ", m1)
 	}
 }
+
+func TestM2(t *testing.T) {
+	var epoch Epoch
+	epoch.Checkpoint = 0
+	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(1)))
+	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(2)))
+	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(3)))
+	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(4)))
+
+	for i := 1; i <= 20; i++ {
+		var str = fmt.Sprintf("block:%d", i)
+		for _, v := range epoch.M2(9, uint64(i)) {
+			str = str + fmt.Sprintf(" %s ", v.Hex())
+		}
+		fmt.Println(str)
+	}
+}

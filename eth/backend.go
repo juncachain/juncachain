@@ -471,6 +471,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
 			}
 
+			rewards["extra"] = header.Extra
+
 			bz, _ := json.Marshal(rewards)
 			_ = chainDb.Put([]byte(fmt.Sprintf("JUNCA-EPOCH-%d", number/c.Config().Epoch)), bz)
 			return rewards, nil
