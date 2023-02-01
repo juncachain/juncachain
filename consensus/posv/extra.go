@@ -12,8 +12,8 @@ import (
 )
 
 type MasterNode struct {
-	Address common.Address
-	Stake   *big.Int
+	Address common.Address `json:"address"`
+	Stake   *big.Int       `json:"stake"`
 }
 
 type MasterNodes []MasterNode

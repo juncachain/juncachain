@@ -62,7 +62,7 @@ func etherbaseWallet(manager *accounts.Manager, etherbase common.Address) accoun
 }
 
 // CreateTransactionSign Send tx sign for block number to smart contract blockSigner.
-func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, eb common.Address) error {
+func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, eb common.Address, toSign, header *types.Header) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
@@ -77,7 +77,7 @@ func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, m
 		baseFee = new(big.Int).SetUint64(params.InitialBaseFee)
 	}
 	gasPrice := new(big.Int).Add(baseFee, big.NewInt(1))
-	tx := BuildTxSignBlockSigner(header.Number, header.Hash(), nonce, gasPrice, common.HexToAddress(common.BlockSignerSMC))
+	tx := BuildTxSignBlockSigner(toSign.Number, toSign.Hash(), nonce, gasPrice, common.HexToAddress(common.BlockSignerSMC))
 	txSigned, err := wallet.SignTx(accounts.Account{Address: eb}, tx, chainConfig.ChainID)
 	if err != nil {
 		log.Error("Fail to create tx sign", "error", err)

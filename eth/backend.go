@@ -321,21 +321,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return masternodes, nil
 		}
 
-		c.HookBlockSign = func(block *types.Header) error {
+		c.HookBlockSign = func(toSign, current *types.Header) error {
 			eb, err := eth.Etherbase()
 			if err != nil {
 				log.Error("Cannot get etherbase for block sign", "err", err)
-				return fmt.Errorf("etherbase missing: %v", err)
+				return errors.Errorf("etherbase missing: %v", err)
 			}
-			//ok := eth.txPool.IsSigner != nil && eth.txPool.IsSigner(eb)
-			//if !ok {
-			//	return nil
-			//}
-			//if block.NumberU64()%common.MergeSignRange == 0 {
-			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, block, chainDb, eb); err != nil {
-				return fmt.Errorf("Fail to create tx block sign for importing block: %v", err)
+			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, eb, toSign, current); err != nil {
+				return errors.Errorf("Fail to create tx block sign for importing block: %v", err)
 			}
-			//}
 			return nil
 		}
 
@@ -348,7 +342,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				begin = begin - common.EpochBlockSignShift
 			}
 
-			end := header.Number.Uint64() - 1
+			end := header.Number.Uint64()
 			if end > common.EpochBlockSignShift {
 				end = end - common.EpochBlockSignShift
 			}
@@ -380,11 +374,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			eb, err := eth.Etherbase()
 			if err != nil {
 				log.Error("Cannot get etherbase for set random secret", "err", err)
-				return fmt.Errorf("etherbase missing: %v", err)
+				return errors.Errorf("etherbase missing: %v", err)
 			}
 
 			if err := contracts.CreateTransactionSetSecret(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
-				return fmt.Errorf("Fail to create tx set secret for importing block: %v", err)
+				return errors.Errorf("Fail to create tx set secret for importing block: %v", err)
 			}
 			return nil
 		}
@@ -398,10 +392,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			eb, err := eth.Etherbase()
 			if err != nil {
 				log.Error("Cannot get etherbase for set random opening", "err", err)
-				return fmt.Errorf("etherbase missing: %v", err)
+				return errors.Errorf("etherbase missing: %v", err)
 			}
 			if err := contracts.CreateTransactionSetOpening(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
-				return fmt.Errorf("Fail to create tx set opening for importing block: %v", err)
+				return errors.Errorf("Fail to create tx set opening for importing block: %v", err)
 			}
 			return nil
 		}
@@ -536,7 +530,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
 			}
 
-			rewards["extra"] = header.Extra
+			var extra posv.Extra
+			if err := extra.FromBytes(header.Extra); err != nil {
+				return nil, err
+			}
+			rewards["epoch"] = extra.Epoch
 
 			bz, _ := rlp.EncodeToBytes(rewards)
 			_ = chainDb.Put([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, number/c.Config().Epoch)), bz)

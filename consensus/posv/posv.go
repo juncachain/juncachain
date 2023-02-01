@@ -196,7 +196,7 @@ type PoSV struct {
 	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
 	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
-	HookBlockSign           func(header *types.Header) error
+	HookBlockSign           func(toSign, current *types.Header) error
 	HookGetBlockSigners     func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error)
 	HookSetRandomizeSecret  func(header *types.Header) error
 	HookSetRandomizeOpening func(header *types.Header) error
@@ -534,12 +534,18 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 
 	if c.HookBlockSign != nil {
-		if m2s := epoch.M2(c.config.Epoch, number); len(m2s) > 0 {
-			for _, m2 := range m2s {
-				if m2 == signer {
-					log.Info("[PoSV]Is turn to validator block", "number", number, "validator", signer)
-					if err := c.HookBlockSign(header); err != nil {
-						log.Error("HookBlockSign", "err", err.Error())
+		if number > common.EpochBlockSignShift {
+			toSignBlockNumber := number - common.EpochBlockSignShift
+			toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber)
+			if toSignBlock != nil {
+				if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
+					for _, m2 := range m2s {
+						if m2 == signer {
+							log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
+							if err := c.HookBlockSign(toSignBlock, header); err != nil {
+								log.Error("[PoSV]HookBlockSign", "err", err.Error())
+							}
+						}
 					}
 				}
 			}
