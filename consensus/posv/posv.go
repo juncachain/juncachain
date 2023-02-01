@@ -233,7 +233,7 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Info("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -241,7 +241,7 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Info("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
+	log.Trace("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -420,7 +420,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Info("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
+	log.Trace("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
 
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
@@ -537,7 +537,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if m2s := epoch.M2(c.config.Epoch, number); len(m2s) > 0 {
 			for _, m2 := range m2s {
 				if m2 == signer {
-					log.Trace("[PoSV]Is turn to validator block", "number", number, "validator", signer)
+					log.Info("[PoSV]Is turn to validator block", "number", number, "validator", signer)
 					if err := c.HookBlockSign(header); err != nil {
 						log.Error("HookBlockSign", "err", err.Error())
 					}
@@ -552,7 +552,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Info("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
 		log.Info("[PoSV]HookReward", "number", header.Number)
 		rewards, err := c.HookReward(chain, state, header)
@@ -576,7 +576,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Info("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
+	log.Trace("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -597,7 +597,7 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Info("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
+	log.Trace("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
