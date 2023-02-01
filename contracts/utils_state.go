@@ -3,7 +3,6 @@ package contracts
 import (
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/core/state"
-	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/crypto"
 	"math/big"
 )
@@ -45,10 +44,10 @@ var (
 	}
 )
 
-func GetSignersFromState(statedb *state.StateDB, block *types.Block) []common.Address {
+func GetSignersFromState(statedb *state.StateDB, blockHash common.Hash) []common.Address {
 	slot := slotBlockSignerMapping["blockSigners"]
 	keys := []common.Hash{}
-	keyArrSlot := GetLocMappingAtKey(block.Hash(), slot)
+	keyArrSlot := GetLocMappingAtKey(blockHash, slot)
 	arrSlot := statedb.GetState(common.HexToAddress(common.BlockSignerSMC), common.BigToHash(keyArrSlot))
 	arrLength := arrSlot.Big().Uint64()
 	for i := uint64(0); i < arrLength; i++ {

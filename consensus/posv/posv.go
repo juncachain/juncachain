@@ -197,6 +197,7 @@ type PoSV struct {
 	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
 	HookBlockSign           func(header *types.Header) error
+	HookGetBlockSigners     func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error)
 	HookSetRandomizeSecret  func(header *types.Header) error
 	HookSetRandomizeOpening func(header *types.Header) error
 }

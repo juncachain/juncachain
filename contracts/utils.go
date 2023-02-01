@@ -256,8 +256,8 @@ func GetCandidates(client *ethclient.Client, number *big.Int) (map[common.Addres
 }
 
 // GetSignersFromContract Get signers signed for blockNumber from blockSigner contract.
-func GetSignersFromContract(stateDB *state.StateDB, block *types.Block) ([]common.Address, error) {
-	return GetSignersFromState(stateDB, block), nil
+func GetSignersFromContract(stateDB *state.StateDB, blockHash common.Hash) ([]common.Address, error) {
+	return GetSignersFromState(stateDB, blockHash), nil
 }
 
 // GetSignersByExecutingEVM Get signers signed for blockNumber from blockSigner contract.

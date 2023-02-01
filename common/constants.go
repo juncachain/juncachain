@@ -38,4 +38,9 @@ const (
 	MaxSigners              = 99
 	EpochBlockSecret        = 10
 	EpochBlockOpening       = 5
+	EpochBlockSignShift     = 10
+)
+
+const (
+	EpochKeyPrefix = "JUNCA-EPOCH-"
 )
