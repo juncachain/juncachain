@@ -7,8 +7,8 @@ contract BlockSigner {
 
     event Sign(address _signer, uint256 _blockNumber, bytes32 _blockHash);
 
-    mapping(bytes32 => address[]) blockSigners;
-    mapping(uint256 => bytes32[]) blocks;
+    mapping(bytes32 => address[]) public blockSigners;
+    mapping(uint256 => bytes32[]) public blocks;
     uint256 public epochNumber;
 
     function BlockSigner(uint256 _epochNumber) public {
