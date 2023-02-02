@@ -18,23 +18,20 @@
 package eth
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"math/big"
-	"runtime"
-	"strings"
-	"sync"
-	"sync/atomic"
-
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/common/hexutil"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/beacon"
 	"github.com/juncachain/juncachain/consensus/clique"
+	"github.com/juncachain/juncachain/consensus/posv"
+	"github.com/juncachain/juncachain/contracts"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/core/bloombits"
 	"github.com/juncachain/juncachain/core/rawdb"
+	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/state/pruner"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/core/vm"
@@ -43,6 +40,7 @@ import (
 	"github.com/juncachain/juncachain/eth/gasprice"
 	"github.com/juncachain/juncachain/eth/protocols/eth"
 	"github.com/juncachain/juncachain/eth/protocols/snap"
+	"github.com/juncachain/juncachain/ethclient"
 	"github.com/juncachain/juncachain/ethdb"
 	"github.com/juncachain/juncachain/event"
 	"github.com/juncachain/juncachain/internal/ethapi"
@@ -56,6 +54,15 @@ import (
 	"github.com/juncachain/juncachain/params"
 	"github.com/juncachain/juncachain/rlp"
 	"github.com/juncachain/juncachain/rpc"
+	"github.com/pkg/errors"
+	"github.com/umpc/go-sortedmap"
+	"math/big"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -99,6 +106,10 @@ type Ethereum struct {
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
+
+	IPCEndpoint string
+	once        sync.Once
+	client      *ethclient.Client // Global ipc client instance.
 }
 
 // New creates a new Ethereum object (including the
@@ -166,6 +177,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		bloomIndexer:      core.NewBloomIndexer(chainDb, params.BloomBitsBlocks, params.BloomConfirms),
 		p2pServer:         stack.Server(),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		IPCEndpoint:       stack.IPCEndpoint(),
 	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
@@ -237,6 +249,325 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		RequiredBlocks: config.RequiredBlocks,
 	}); err != nil {
 		return nil, err
+	}
+	// for PoSV
+	if chainConfig.Posv != nil {
+		var c *posv.PoSV
+		if cl, ok := eth.engine.(*beacon.Beacon); ok {
+			if e, ok := cl.InnerEngine().(*posv.PoSV); ok {
+				c = e
+			}
+		}
+
+		eth.TxPool().IsSigner = func(address common.Address) bool {
+			currentHeader := eth.blockchain.CurrentHeader()
+			header := currentHeader
+			// Sometimes, the latest block hasn't been inserted to chain yet
+			// getSnapshot from parent block if it exists
+			parentHeader := eth.blockchain.GetHeader(currentHeader.ParentHash, currentHeader.Number.Uint64()-1)
+			if parentHeader != nil {
+				// not genesis block
+				header = parentHeader
+			}
+
+			lastCheckpoint := c.LastEpoch(header.Number.Uint64())
+			var extra posv.Extra
+			if err := extra.FromBytes(eth.blockchain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
+				return false
+			}
+
+			for _, v := range extra.Epoch.M1Slice() {
+				if v == address {
+					return true
+				}
+			}
+			return false
+		}
+
+		c.HookValidator = func(number *big.Int, masters []common.Address) ([]common.Address, error) {
+			start := time.Now()
+			client, err := eth.GetClient()
+			if err != nil {
+				return nil, err
+			}
+			validators, err := contracts.GetValidators(client, masters)
+			if err != nil {
+				return nil, err
+			}
+			log.Debug("Time Calculated HookValidator ", "block", number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
+			return validators, nil
+		}
+
+		c.HookGetMasterNodes = func(number *big.Int) (posv.MasterNodes, error) {
+			client, err := eth.GetClient()
+			if err != nil {
+				return nil, err
+			}
+
+			candidates, err := contracts.GetCandidates(client, number)
+			if err != nil {
+				return nil, err
+			}
+
+			var (
+				masternodes posv.MasterNodes
+			)
+			for k, v := range candidates {
+				masternodes = append(masternodes, posv.MasterNode{
+					Address: k,
+					Stake:   v,
+				})
+			}
+			sort.Sort(masternodes)
+			return masternodes, nil
+		}
+
+		c.HookBlockSign = func(toSign, current *types.Header) error {
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for block sign", "err", err)
+				return errors.Errorf("etherbase missing: %v", err)
+			}
+			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, eb, toSign, current); err != nil {
+				return errors.Errorf("Fail to create tx block sign for importing block: %v", err)
+			}
+			return nil
+		}
+
+		c.HookGetBlockSigners = func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error) {
+			if header.Number.Uint64()%c.Config().Epoch != 0 {
+				return nil, nil
+			}
+			begin := c.LastEpoch(header.Number.Uint64())
+			end := header.Number.Uint64() - 1
+
+			signCount := make(map[common.Address]int)
+			for i := begin; i <= end; i++ {
+				hd := chain.GetHeaderByNumber(i)
+				if hd != nil {
+					signers, err := contracts.GetSignersFromContract(stateBlock, hd.Hash())
+					if err != nil {
+						log.Crit("HookQueryBlockSigners", "err", err)
+					}
+					for _, v := range signers {
+						signCount[v] = signCount[v] + 1
+					}
+				}
+			}
+
+			return signCount, nil
+		}
+
+		c.HookSetRandomizeSecret = func(header *types.Header) error {
+			checkNumber := header.Number.Uint64() % c.Config().Epoch
+			if c.Config().Epoch-checkNumber != common.EpochBlockSecret {
+				return nil
+			}
+			log.Info("[PoSV]Is check number to set secret", "number", header.Number.Uint64())
+
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for set random secret", "err", err)
+				return errors.Errorf("etherbase missing: %v", err)
+			}
+
+			if err := contracts.CreateTransactionSetSecret(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+				return errors.Errorf("Fail to create tx set secret for importing block: %v", err)
+			}
+			return nil
+		}
+
+		c.HookSetRandomizeOpening = func(header *types.Header) error {
+			checkNumber := header.Number.Uint64() % c.Config().Epoch
+			if c.Config().Epoch-checkNumber != common.EpochBlockOpening {
+				return nil
+			}
+			log.Info("[PoSV]Is check number to set opening", "number", header.Number.Uint64())
+			eb, err := eth.Etherbase()
+			if err != nil {
+				log.Error("Cannot get etherbase for set random opening", "err", err)
+				return errors.Errorf("etherbase missing: %v", err)
+			}
+			if err := contracts.CreateTransactionSetOpening(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+				return errors.Errorf("Fail to create tx set opening for importing block: %v", err)
+			}
+			return nil
+		}
+
+		c.HookReward = func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[string]interface{}, error) {
+			number := header.Number.Uint64()
+			if number == 0 || number%c.Config().Epoch != 0 {
+				return nil, nil
+			}
+			type Stat struct {
+				Address common.Address `json:"address"`
+				Cap     *big.Int       `json:"cap"`
+				Reward  *big.Int       `json:"reward"`
+			}
+			var (
+				rewards        = make(map[string]interface{})
+				m1Stat         = make(map[common.Address]*Stat)
+				m2Stat         = make(map[common.Address]*Stat)
+				voterStat      = make(map[common.Address]*Stat)
+				totalCap       = new(big.Int)
+				totalSignCount int
+			)
+
+			// list sealers as M1(valid M1 list)
+			lastNumber := number - c.Config().Epoch
+			if lastNumber == 0 {
+				lastNumber = 1
+			}
+			var sealers = make(map[common.Address]int)
+			for i := number - 1; i >= lastNumber; i-- {
+				hd := chain.GetHeaderByNumber(i)
+				if hd == nil {
+					return nil, errors.Errorf("header %d is nil", lastNumber+i)
+				}
+				sealer, err := c.Author(hd)
+				if err != nil {
+					return nil, err
+				}
+				sealers[sealer] = sealers[sealer] + 1
+			}
+			rewards["sealers"] = sealers
+
+			// list block signers as M2(all M2)
+			m2s, err := c.HookGetBlockSigners(chain, stateBlock, header)
+			if err != nil {
+				return nil, err
+			}
+			rewards["m2s"] = m2s
+
+			for sealer, _ := range sealers {
+				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int), Reward: new(big.Int)}
+				voters := contracts.GetVotersFromState(stateBlock, sealer)
+				for _, v := range voters {
+					if voterStat[v] == nil {
+						voterStat[v] = &Stat{Address: v, Cap: new(big.Int), Reward: new(big.Int)}
+					}
+					cap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
+					totalCap = new(big.Int).Add(totalCap, cap)
+					if st, ok := voterStat[v]; ok {
+						st.Cap = new(big.Int).Add(st.Cap, cap)
+					}
+					if st, ok := m1Stat[sealer]; ok {
+						st.Cap = new(big.Int).Add(st.Cap, cap)
+					}
+				}
+			}
+
+			for signer, signCount := range m2s {
+				totalSignCount = totalSignCount + signCount
+				if st, ok := m2Stat[signer]; ok {
+					st.Cap = new(big.Int).Add(st.Cap, big.NewInt(int64(signCount)))
+				} else {
+					m2Stat[signer] = &Stat{Address: signer, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
+				}
+			}
+
+			rewardM1 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM1Percent))
+			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
+			for _, v := range m1Stat {
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
+				if v.Reward.Cmp(new(big.Int)) > 0 {
+					stateBlock.AddBalance(v.Address, v.Reward)
+				}
+			}
+			rewards["m1"] = m1Stat
+
+			rewardM2 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM2Percent))
+			rewardM2 = new(big.Int).Div(rewardM2, new(big.Int).SetInt64(100))
+			for _, v := range m2Stat {
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignCount)))
+				if v.Reward.Cmp(new(big.Int)) > 0 {
+					stateBlock.AddBalance(v.Address, v.Reward)
+				}
+			}
+			rewards["m2"] = m2Stat
+
+			rewardVoter := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardVoterPercent))
+			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
+			for _, v := range voterStat {
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
+				if v.Reward.Cmp(new(big.Int)) > 0 {
+					stateBlock.AddBalance(v.Address, v.Reward)
+				}
+			}
+			rewards["voters"] = voterStat
+
+			rewardFoundation := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+			rewardFoundation = new(big.Int).Div(rewardFoundation, new(big.Int).SetInt64(100))
+			rewards["foundation"] = struct {
+				Address common.Address `json:"address"`
+				Reward  *big.Int       `json:"reward"`
+			}{c.Config().Foundation, rewardFoundation}
+			if rewardFoundation.Cmp(new(big.Int)) > 0 {
+				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
+			}
+
+			var extra posv.Extra
+			if err := extra.FromBytes(header.Extra); err != nil {
+				return nil, err
+			}
+			rewards["epoch"] = extra.Epoch
+
+			bz, _ := rlp.EncodeToBytes(rewards)
+			_ = chainDb.Put([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, number/c.Config().Epoch)), bz)
+			return rewards, nil
+		}
+
+		c.HookPenalty = func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
+			number := header.Number.Uint64()
+			if number == 0 || number%c.Config().Epoch != 0 {
+				return nil, nil
+			}
+			lastNumber := number - c.Config().Epoch
+			if lastNumber == 0 {
+				lastNumber = 1
+			}
+			epoch, err := c.GetEpoch(chain, c.LastEpoch(number))
+			if err != nil {
+				return nil, err
+			}
+
+			// Count M1 miss seal block by turn
+			sealermiss := sortedmap.New(0, func(i, j interface{}) bool {
+				if i.(int) > j.(int) {
+					return true
+				}
+				return false
+			})
+			for i := number - 1; i >= lastNumber; i-- {
+				hd := chain.GetHeaderByNumber(i)
+				if hd == nil {
+					return nil, errors.Errorf("header %d is nil", i)
+				}
+				signer, err := c.Author(hd)
+				if err != nil {
+					return nil, err
+				}
+				turn := epoch.M1(c.Config().Epoch, i)
+				if signer != turn {
+					if v, ok := sealermiss.Get(turn); !ok {
+						sealermiss.Insert(turn, 1)
+					} else {
+						miss := v.(int) + 1
+						sealermiss.Insert(turn, miss)
+					}
+				}
+			}
+
+			var penalties = make([]common.Address, 0)
+			if it, err := sealermiss.IterCh(); err == nil {
+				for rec := range it.Records() {
+					if rec.Val.(int) > common.EpochBlockSealMissAllow {
+						penalties = append(penalties, rec.Key.(common.Address))
+					}
+				}
+			}
+			return penalties, nil
+		}
 	}
 
 	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
@@ -445,21 +776,36 @@ func (s *Ethereum) StartMining(threads int) error {
 			log.Error("Cannot start mining without etherbase", "err", err)
 			return fmt.Errorf("etherbase missing: %v", err)
 		}
-		var cli *clique.Clique
-		if c, ok := s.engine.(*clique.Clique); ok {
-			cli = c
-		} else if cl, ok := s.engine.(*beacon.Beacon); ok {
-			if c, ok := cl.InnerEngine().(*clique.Clique); ok {
-				cli = c
-			}
-		}
-		if cli != nil {
+
+		getWallet := func() (accounts.Wallet, error) {
 			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
 			if wallet == nil || err != nil {
 				log.Error("Etherbase account unavailable locally", "err", err)
+				return wallet, fmt.Errorf("signer missing: %v", err)
+			}
+			return wallet, nil
+		}
+
+		if c, ok := s.engine.(*clique.Clique); ok {
+			w, err := getWallet()
+			if err != nil {
 				return fmt.Errorf("signer missing: %v", err)
 			}
-			cli.Authorize(eb, wallet.SignData)
+			c.Authorize(eb, w.SignData)
+		} else if cl, ok := s.engine.(*beacon.Beacon); ok {
+			if c, ok := cl.InnerEngine().(*clique.Clique); ok {
+				w, err := getWallet()
+				if err != nil {
+					return fmt.Errorf("signer missing: %v", err)
+				}
+				c.Authorize(eb, w.SignData)
+			} else if c, ok := cl.InnerEngine().(*posv.PoSV); ok {
+				w, err := getWallet()
+				if err != nil {
+					return fmt.Errorf("signer missing: %v", err)
+				}
+				c.Authorize(eb, w.SignData)
+			}
 		}
 		// If mining is started, we can disable the transaction rejection mechanism
 		// introduced to speed sync times.
@@ -562,4 +908,26 @@ func (s *Ethereum) Stop() error {
 	s.eventMux.Stop()
 
 	return nil
+}
+
+func (s *Ethereum) GetClient() (*ethclient.Client, error) {
+	s.once.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Crit("PoSV init ethclient timeout")
+			default:
+				cli, err := ethclient.Dial(s.IPCEndpoint)
+				if err != nil {
+					log.Warn("PoSV ethclient.Dial", "err", err)
+					continue
+				}
+				s.client = cli
+				return
+			}
+		}
+	})
+	return s.client, nil
 }

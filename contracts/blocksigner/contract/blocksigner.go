@@ -30,8 +30,8 @@ var (
 
 // BlockSignerMetaData contains all meta data concerning the BlockSigner contract.
 var BlockSignerMetaData = &bind.MetaData{
-	ABI: "[{\"constant\":false,\"inputs\":[{\"name\":\"_blockNumber\",\"type\":\"uint256\"},{\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"sign\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"getSigners\",\"outputs\":[{\"name\":\"\",\"type\":\"address[]\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"epochNumber\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_epochNumber\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"_signer\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"_blockNumber\",\"type\":\"uint256\"},{\"indexed\":false,\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"Sign\",\"type\":\"event\"}]",
-	Bin: "0x6060604052341561000f57600080fd5b604051602080610495833981016040528080519060200190919050508060028190555050610453806100426000396000f300606060405260043610610057576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063e341eaa41461005c578063e7ec6aef1461008c578063f4145a8314610108575b600080fd5b341561006757600080fd5b61008a600480803590602001909190803560001916906020019091905050610131565b005b341561009757600080fd5b6100b160048080356000191690602001909190505061029f565b6040518080602001828103825283818151815260200191508051906020019060200280838360005b838110156100f45780820151818401526020810190506100d9565b505050509050019250505060405180910390f35b341561011357600080fd5b61011b61034d565b6040518082815260200191505060405180910390f35b81431015151561014057600080fd5b61015760028054028361035390919063ffffffff16565b431115151561016557600080fd5b60016000838152602001908152602001600020805480600101828161018a9190610371565b916000526020600020900160008390919091509060001916905550600080826000191660001916815260200190815260200160002080548060010182816101d1919061039d565b9160005260206000209001600033909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550507f62855fa22e051687c32ac285857751f6d3f2c100c72756d8d30cb7ecb1f64f54338383604051808473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020018381526020018260001916600019168152602001935050505060405180910390a15050565b6102a76103c9565b600080836000191660001916815260200190815260200160002080548060200260200160405190810160405280929190818152602001828054801561034157602002820191906000526020600020905b8160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190600101908083116102f7575b50505050509050919050565b60025481565b600080828401905083811015151561036757fe5b8091505092915050565b8154818355818115116103985781836000526020600020918201910161039791906103dd565b5b505050565b8154818355818115116103c4578183600052602060002091820191016103c39190610402565b5b505050565b602060405190810160405280600081525090565b6103ff91905b808211156103fb5760008160009055506001016103e3565b5090565b90565b61042491905b80821115610420576000816000905550600101610408565b5090565b905600a165627a7a7230582034428fda04d171e322189703616b6d7afe845daf118e36c94bddaf08f14cc6eb0029",
+	ABI: "[{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"bytes32\"},{\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"blockSigners\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_blockNumber\",\"type\":\"uint256\"},{\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"sign\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"getSigners\",\"outputs\":[{\"name\":\"\",\"type\":\"address[]\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"epochNumber\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"uint256\"},{\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"blocks\",\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_epochNumber\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"_signer\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"_blockNumber\",\"type\":\"uint256\"},{\"indexed\":false,\"name\":\"_blockHash\",\"type\":\"bytes32\"}],\"name\":\"Sign\",\"type\":\"event\"}]",
+	Bin: "0x6060604052341561000f57600080fd5b6040516020806105e28339810160405280805190602001909190505080600281905550506105a0806100426000396000f30060606040526004361061006d576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063046a429014610072578063e341eaa4146100e2578063e7ec6aef14610112578063f4145a831461018e578063f4f911db146101b7575b600080fd5b341561007d57600080fd5b6100a06004808035600019169060200190919080359060200190919050506101ff565b604051808273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b34156100ed57600080fd5b61011060048080359060200190919080356000191690602001909190505061024d565b005b341561011d57600080fd5b6101376004808035600019169060200190919050506103bb565b6040518080602001828103825283818151815260200191508051906020019060200280838360005b8381101561017a57808201518184015260208101905061015f565b505050509050019250505060405180910390f35b341561019957600080fd5b6101a1610469565b6040518082815260200191505060405180910390f35b34156101c257600080fd5b6101e1600480803590602001909190803590602001909190505061046f565b60405180826000191660001916815260200191505060405180910390f35b60006020528160005260406000208181548110151561021a57fe5b90600052602060002090016000915091509054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b81431015151561025c57600080fd5b6102736002805402836104a090919063ffffffff16565b431115151561028157600080fd5b6001600083815260200190815260200160002080548060010182816102a691906104be565b916000526020600020900160008390919091509060001916905550600080826000191660001916815260200190815260200160002080548060010182816102ed91906104ea565b9160005260206000209001600033909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550507f62855fa22e051687c32ac285857751f6d3f2c100c72756d8d30cb7ecb1f64f54338383604051808473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020018381526020018260001916600019168152602001935050505060405180910390a15050565b6103c3610516565b600080836000191660001916815260200190815260200160002080548060200260200160405190810160405280929190818152602001828054801561045d57602002820191906000526020600020905b8160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019060010190808311610413575b50505050509050919050565b60025481565b60016020528160005260406000208181548110151561048a57fe5b9060005260206000209001600091509150505481565b60008082840190508381101515156104b457fe5b8091505092915050565b8154818355818115116104e5578183600052602060002091820191016104e4919061052a565b5b505050565b81548183558181151161051157818360005260206000209182019101610510919061054f565b5b505050565b602060405190810160405280600081525090565b61054c91905b80821115610548576000816000905550600101610530565b5090565b90565b61057191905b8082111561056d576000816000905550600101610555565b5090565b905600a165627a7a7230582097669abc31526c61e4cf182d5743db4c3c9993235313274472dce7d090fee57c0029",
 }
 
 // BlockSignerABI is the input ABI used to generate the binding from.
@@ -199,6 +199,68 @@ func (_BlockSigner *BlockSignerTransactorRaw) Transfer(opts *bind.TransactOpts) 
 // Transact invokes the (paid) contract method with params as input values.
 func (_BlockSigner *BlockSignerTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
 	return _BlockSigner.Contract.contract.Transact(opts, method, params...)
+}
+
+// BlockSigners is a free data retrieval call binding the contract method 0x046a4290.
+//
+// Solidity: function blockSigners(bytes32 , uint256 ) view returns(address)
+func (_BlockSigner *BlockSignerCaller) BlockSigners(opts *bind.CallOpts, arg0 [32]byte, arg1 *big.Int) (common.Address, error) {
+	var out []interface{}
+	err := _BlockSigner.contract.Call(opts, &out, "blockSigners", arg0, arg1)
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// BlockSigners is a free data retrieval call binding the contract method 0x046a4290.
+//
+// Solidity: function blockSigners(bytes32 , uint256 ) view returns(address)
+func (_BlockSigner *BlockSignerSession) BlockSigners(arg0 [32]byte, arg1 *big.Int) (common.Address, error) {
+	return _BlockSigner.Contract.BlockSigners(&_BlockSigner.CallOpts, arg0, arg1)
+}
+
+// BlockSigners is a free data retrieval call binding the contract method 0x046a4290.
+//
+// Solidity: function blockSigners(bytes32 , uint256 ) view returns(address)
+func (_BlockSigner *BlockSignerCallerSession) BlockSigners(arg0 [32]byte, arg1 *big.Int) (common.Address, error) {
+	return _BlockSigner.Contract.BlockSigners(&_BlockSigner.CallOpts, arg0, arg1)
+}
+
+// Blocks is a free data retrieval call binding the contract method 0xf4f911db.
+//
+// Solidity: function blocks(uint256 , uint256 ) view returns(bytes32)
+func (_BlockSigner *BlockSignerCaller) Blocks(opts *bind.CallOpts, arg0 *big.Int, arg1 *big.Int) ([32]byte, error) {
+	var out []interface{}
+	err := _BlockSigner.contract.Call(opts, &out, "blocks", arg0, arg1)
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// Blocks is a free data retrieval call binding the contract method 0xf4f911db.
+//
+// Solidity: function blocks(uint256 , uint256 ) view returns(bytes32)
+func (_BlockSigner *BlockSignerSession) Blocks(arg0 *big.Int, arg1 *big.Int) ([32]byte, error) {
+	return _BlockSigner.Contract.Blocks(&_BlockSigner.CallOpts, arg0, arg1)
+}
+
+// Blocks is a free data retrieval call binding the contract method 0xf4f911db.
+//
+// Solidity: function blocks(uint256 , uint256 ) view returns(bytes32)
+func (_BlockSigner *BlockSignerCallerSession) Blocks(arg0 *big.Int, arg1 *big.Int) ([32]byte, error) {
+	return _BlockSigner.Contract.Blocks(&_BlockSigner.CallOpts, arg0, arg1)
 }
 
 // EpochNumber is a free data retrieval call binding the contract method 0xf4145a83.

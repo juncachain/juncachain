@@ -18,7 +18,9 @@ package params
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"github.com/juncachain/juncachain/common/math"
 	"math/big"
 
 	"github.com/juncachain/juncachain/common"
@@ -279,6 +281,8 @@ var (
 	// adding flags to the config to also have to set these fields.
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, &CliqueConfig{Period: 0, Epoch: 30000}, nil}
 
+	AllPoSVProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, nil, nil, false, nil, nil, &PoSVConfig{Period: 0, Epoch: 30000}}
+
 	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), nil, false, big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, nil, nil, false, new(EthashConfig), nil, nil}
 	TestRules       = TestChainConfig.Rules(new(big.Int), false)
 )
@@ -409,8 +413,54 @@ func (c *CliqueConfig) String() string {
 
 // PoSVConfig is the consensus engine configs for proof-of-voting based sealing.
 type PoSVConfig struct {
-	Period uint64 `json:"period"` // Number of seconds between blocks to enforce
-	Epoch  uint64 `json:"epoch"`  // Epoch length to reset votes and checkpoint
+	Period      uint64         `json:"period"`    // Number of seconds between blocks to enforce
+	Epoch       uint64         `json:"epoch"`     // Epoch length to reset votes and checkpoint
+	MinStaked   *big.Int       `json:"minStaked"` // validator min staked
+	Reward      *big.Int       `json:"reward"`    // reward per epoch
+	Foundation  common.Address `json:"foundation"`
+	InstanceDir string         `json:"-"`
+}
+
+func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
+	type PoSVConfig struct {
+		Period     uint64
+		Epoch      uint64
+		MinStaked  *math.HexOrDecimal256
+		Reward     *math.HexOrDecimal256
+		Foundation common.Address
+	}
+
+	var enc PoSVConfig
+	enc.Period = pc.Period
+	enc.Epoch = pc.Epoch
+	enc.MinStaked = (*math.HexOrDecimal256)(pc.MinStaked)
+	enc.Reward = (*math.HexOrDecimal256)(pc.Reward)
+	enc.Foundation = pc.Foundation
+	return json.Marshal(&enc)
+}
+
+func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
+	type PoSVConfig struct {
+		Period     uint64
+		Epoch      uint64
+		MinStaked  *math.HexOrDecimal256
+		Reward     *math.HexOrDecimal256
+		Foundation common.Address
+	}
+	var dec PoSVConfig
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	pc.Period = dec.Period
+	pc.Epoch = dec.Epoch
+	if dec.MinStaked != nil {
+		pc.MinStaked = (*big.Int)(dec.MinStaked)
+	}
+	if dec.Reward != nil {
+		pc.Reward = (*big.Int)(dec.Reward)
+	}
+	pc.Foundation = dec.Foundation
+	return nil
 }
 
 // String implements the stringer interface, returning the consensus engine details.
@@ -445,6 +495,8 @@ func (c *ChainConfig) String() string {
 		} else {
 			banner += "Consensus: Beacon (proof-of-stake), merged from Clique (proof-of-authority)\n"
 		}
+	case c.Posv != nil:
+		banner += "Consensus: PoSV (proof-of-stake voting)\n"
 	default:
 		banner += "Consensus: unknown\n"
 	}
@@ -811,13 +863,3 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool) Rules {
 		isCancun:         c.IsCancun(num),
 	}
 }
-
-var (
-	RewardMasterPercent     = int64(40)
-	RewardVoterPercent      = uint64(50)
-	RewardFoundationPercent = int64(10)
-	BlockSigners            = "0x0000000000000000000000000000000000000089"
-	MasternodeVotingSMC     = "0x0000000000000000000000000000000000000088"
-	RandomizeSMC            = "0x0000000000000000000000000000000000000090"
-	FoudationAddr           = "0x0000000000000000000000000000000000000068"
-)

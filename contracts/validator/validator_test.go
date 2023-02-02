@@ -31,7 +31,6 @@ import (
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/crypto"
 	"github.com/juncachain/juncachain/log"
-	"github.com/juncachain/juncachain/params"
 )
 
 var (
@@ -63,20 +62,19 @@ func TestValidator(t *testing.T) {
 	}
 	contractBackend.Commit()
 
-	d := time.Now().Add(1000 * time.Millisecond)
-	ctx, cancel := context.WithDeadline(context.Background(), d)
-	defer cancel()
-	code, _ := contractBackend.CodeAt(ctx, validatorAddress, nil)
+	code, _ := contractBackend.CodeAt(context.Background(), validatorAddress, nil)
 	t.Log("contract code", hexutil.Encode(code))
 
-	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().State()
+	if err != nil {
+		t.Fatalf("can't get stateDB by root: %v err:%v", head.Root.Hex(), err)
+	}
+
+	t.Log(string(stateDB.Dump(nil)))
+
 	f := func(key, val common.Hash) bool {
 		t.Log(key.Hex(), val.Hex())
 		return true
-	}
-	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
-	if err != nil {
-		t.Fatalf("can't get stateDB by root: %v err:%v", head.Root.Hex(), err)
 	}
 	_ = stateDB.ForEachStorage(validatorAddress, f)
 
@@ -160,7 +158,7 @@ func TestRewardBalance(t *testing.T) {
 		logCaps[i] = &logCap{accounts[randIndex].From.String(), randCap}
 	}
 
-	foundationAddr := common.HexToAddress(params.FoudationAddr)
+	foundationAddr := common.HexToAddress(common.JuncaFoudation)
 	totalReward := new(big.Int).SetInt64(15 * 1000)
 	rewards, err := GetRewardBalancesRate(foundationAddr, acc3Addr, totalReward, baseValidator)
 	if err != nil {
@@ -197,7 +195,7 @@ func TestRewardBalance(t *testing.T) {
 func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common.Address, totalReward *big.Int, validator *contractValidator.JuncaValidator) (map[common.Address]*big.Int, error) {
 	owner := GetCandidatesOwnerBySigner(validator, masterAddr)
 	balances := make(map[common.Address]*big.Int)
-	rewardMaster := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(params.RewardMasterPercent))
+	rewardMaster := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardM1Percent))
 	rewardMaster = new(big.Int).Div(rewardMaster, new(big.Int).SetInt64(100))
 	balances[owner] = rewardMaster
 	// Get voters for masternode.
@@ -209,7 +207,7 @@ func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common
 	}
 
 	if len(voters) > 0 {
-		totalVoterReward := new(big.Int).Mul(totalReward, new(big.Int).SetUint64(params.RewardVoterPercent))
+		totalVoterReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardVoterPercent))
 		totalVoterReward = new(big.Int).Div(totalVoterReward, new(big.Int).SetUint64(100))
 		totalCap := new(big.Int)
 		// Get voters capacities.
@@ -241,9 +239,9 @@ func GetRewardBalancesRate(foudationWalletAddr common.Address, masterAddr common
 		}
 	}
 
-	foudationReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(params.RewardFoundationPercent))
-	foudationReward = new(big.Int).Div(foudationReward, new(big.Int).SetInt64(100))
-	balances[foudationWalletAddr] = foudationReward
+	foundationReward := new(big.Int).Mul(totalReward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+	foundationReward = new(big.Int).Div(foundationReward, new(big.Int).SetInt64(100))
+	balances[foudationWalletAddr] = foundationReward
 
 	jsonHolders, err := json.Marshal(balances)
 	if err != nil {

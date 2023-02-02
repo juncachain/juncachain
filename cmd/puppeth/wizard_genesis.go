@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,10 +27,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
+	"github.com/juncachain/juncachain/accounts/abi/bind"
+	"github.com/juncachain/juncachain/accounts/abi/bind/backends"
 	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus/posv"
+	blockSignerContract "github.com/juncachain/juncachain/contracts/blocksigner"
+	randomizeContract "github.com/juncachain/juncachain/contracts/randomize"
+	validatorContract "github.com/juncachain/juncachain/contracts/validator"
 	"github.com/juncachain/juncachain/core"
+	"github.com/juncachain/juncachain/crypto"
 	"github.com/juncachain/juncachain/log"
 	"github.com/juncachain/juncachain/params"
 )
@@ -55,9 +64,10 @@ func (w *wizard) makeGenesis() {
 	}
 	// Figure out which consensus engine to choose
 	fmt.Println()
-	fmt.Println("Which consensus engine to use? (default = clique)")
+	fmt.Println("Which consensus engine to use? (default = PoSV)")
 	fmt.Println(" 1. Ethash - proof-of-work")
 	fmt.Println(" 2. Clique - proof-of-authority")
+	fmt.Println(" 3. PoSV   - proof-of-stake voting")
 
 	choice := w.read()
 	switch {
@@ -66,7 +76,7 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Ethash = new(params.EthashConfig)
 		genesis.ExtraData = make([]byte, 32)
 
-	case choice == "" || choice == "2":
+	case choice == "2":
 		// In the case of clique, configure the consensus parameters
 		genesis.Difficulty = big.NewInt(1)
 		genesis.Config.Clique = &params.CliqueConfig{
@@ -103,7 +113,78 @@ func (w *wizard) makeGenesis() {
 		for i, signer := range signers {
 			copy(genesis.ExtraData[32+i*common.AddressLength:], signer[:])
 		}
+	case choice == "" || choice == "3":
+		// In the case of posv, configure the consensus parameters
+		genesis.Difficulty = big.NewInt(1)
+		base := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+		genesis.Config.Posv = &params.PoSVConfig{
+			Period:     2,
+			Epoch:      900,
+			MinStaked:  new(big.Int).Mul(big.NewInt(50000), base),
+			Reward:     new(big.Int).Mul(big.NewInt(250), base),
+			Foundation: common.Address{},
+		}
+		fmt.Println()
+		fmt.Println("How many seconds should blocks take? (default = 2)")
+		genesis.Config.Posv.Period = uint64(w.readDefaultInt(2))
 
+		fmt.Println()
+		fmt.Println("How many blocks each an epoch? (default = 900)")
+		genesis.Config.Posv.Epoch = uint64(w.readDefaultInt(900))
+
+		fmt.Println()
+		fmt.Println("How many min tokens should be staked? (default = 50000)")
+		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), base)
+
+		fmt.Println()
+		fmt.Println("How many Ethers should be rewarded to masternode per epoch? (default = 250)")
+		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(250))), base)
+
+		fmt.Println()
+		fmt.Println("What is foundation wallet address? (default = 0x0000000000004a756E6361466F75646174696f6E)")
+		genesis.Config.Posv.Foundation = w.readDefaultAddress(common.HexToAddress(common.JuncaFoudation))
+
+		// We also need the initial list of signers
+		fmt.Println()
+		fmt.Println("Which accounts are allowed to seal? (mandatory at least one)")
+
+		var signers posv.MasterNodes
+		for {
+			if address := w.readAddress(); address != nil {
+				signers = append(signers, posv.MasterNode{
+					Address: *address,
+					Stake:   genesis.Config.Posv.MinStaked,
+				})
+				continue
+			}
+			if len(signers) > 0 {
+				break
+			}
+		}
+		sort.Sort(signers)
+		var extra posv.Extra
+		extra.Epoch.Checkpoint = 0
+		extra.Epoch.Reward = new(big.Int)
+		for _, v := range signers {
+			extra.Epoch.M1s = append(extra.Epoch.M1s, posv.MasterNode{
+				Address: v.Address,
+				Stake:   genesis.Config.Posv.MinStaked,
+			})
+			extra.Epoch.M2s = append(extra.Epoch.M2s, v.Address)
+		}
+		b := extra.ToBytes()
+		genesis.ExtraData = make([]byte, len(b))
+		copy(genesis.ExtraData, b)
+
+		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, genesis.Alloc); err != nil {
+			log.Crit("Error on deployValidatorContract", "err", err)
+		}
+		if err := deployBlockSignerContract(genesis.Config.Posv.Epoch, genesis.Alloc); err != nil {
+			log.Crit("Error on deployBlockSignerContract", "err", err)
+		}
+		if err := deployRandomizeContract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployRandomizeContract", "err", err)
+		}
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
 	}
@@ -282,4 +363,154 @@ func (w *wizard) manageGenesis() {
 		log.Error("That's not something I can do")
 		return
 	}
+}
+
+func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesisAlloc core.GenesisAlloc) error {
+	if len(masters) == 0 {
+		return nil
+	}
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: big.NewInt(100000000000000000)}}, 10000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
+	transactOpts.GasPrice = gasPrice
+
+	var validatorCaps []*big.Int
+	var signers []common.Address
+	for i := 0; i < len(masters); i++ {
+		validatorCaps = append(validatorCaps, stakeCap)
+		signers = append(signers, masters[i].Address)
+	}
+	validatorAddress, _, err := validatorContract.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
+	if err != nil {
+		log.Error("Can't deploy root registry", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, validatorAddress, nil)
+
+	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(validatorAddress, f); err != nil {
+		log.Error("can't foreach validator", "validatorAddress", validatorAddress.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.MasternodeVotingSMC)] = core.GenesisAccount{
+		Balance: new(big.Int).Mul(stakeCap, big.NewInt(int64(len(validatorCaps)))),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: big.NewInt(100000000000000000)}}, 10000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
+	transactOpts.GasPrice = gasPrice
+
+	blockSignerAddress, _, err := blockSignerContract.DeployBlockSigner(transactOpts, contractBackend, big.NewInt(int64(epochNumber)))
+	if err != nil {
+		log.Error("Can't deploy root registry", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, blockSignerAddress, nil)
+
+	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(blockSignerAddress, f); err != nil {
+		log.Error("can't foreach blockSigner", "blockSignerAddress", blockSignerAddress.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.BlockSignerSMC)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: big.NewInt(100000000000000000)}}, 10000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
+	transactOpts.GasPrice = gasPrice
+
+	randomizeAddress, _, err := randomizeContract.DeployRandomize(transactOpts, contractBackend)
+	if err != nil {
+		log.Error("Can't deploy root registry", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, randomizeAddress, nil)
+
+	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(randomizeAddress, f); err != nil {
+		log.Error("can't foreach randomize", "randomizeAddress", randomizeAddress.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.RandomizeSMC)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
 }
