@@ -55,6 +55,7 @@ import (
 	"github.com/juncachain/juncachain/rlp"
 	"github.com/juncachain/juncachain/rpc"
 	"github.com/pkg/errors"
+	"github.com/umpc/go-sortedmap"
 	"math/big"
 	"runtime"
 	"sort"
@@ -338,14 +339,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, nil
 			}
 			begin := c.LastEpoch(header.Number.Uint64())
-			if begin > common.EpochBlockSignShift {
-				begin = begin - common.EpochBlockSignShift
-			}
-
-			end := header.Number.Uint64()
-			if end > common.EpochBlockSignShift {
-				end = end - common.EpochBlockSignShift
-			}
+			end := header.Number.Uint64() - 1
 
 			signCount := make(map[common.Address]int)
 			for i := begin; i <= end; i++ {
@@ -405,31 +399,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if number == 0 || number%c.Config().Epoch != 0 {
 				return nil, nil
 			}
-
-			// list signers as M1(valid M1 list)
-			lastNumber := number - c.Config().Epoch
-			if lastNumber == 0 {
-				lastNumber = 1
-			}
-			var signers = make(map[common.Address]common.Address)
-			for i := number - 1; i >= lastNumber; i-- {
-				hd := chain.GetHeaderByNumber(i)
-				if hd == nil {
-					return nil, errors.Errorf("header %d is nil", lastNumber+i)
-				}
-				signer, err := c.Author(hd)
-				if err != nil {
-					return nil, err
-				}
-				signers[signer] = signer
-			}
-
-			// list block signers as M2(all M2)
-			m2s, err := c.HookGetBlockSigners(chain, stateBlock, header)
-			if err != nil {
-				return nil, err
-			}
-
 			type Stat struct {
 				Address common.Address `json:"address"`
 				Cap     *big.Int       `json:"cap"`
@@ -444,49 +413,56 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				totalSignCount int
 			)
 
-			for _, signer := range signers {
-				voters := contracts.GetVotersFromState(stateBlock, signer)
+			// list sealers as M1(valid M1 list)
+			lastNumber := number - c.Config().Epoch
+			if lastNumber == 0 {
+				lastNumber = 1
+			}
+			var sealers = make(map[common.Address]int)
+			for i := number - 1; i >= lastNumber; i-- {
+				hd := chain.GetHeaderByNumber(i)
+				if hd == nil {
+					return nil, errors.Errorf("header %d is nil", lastNumber+i)
+				}
+				sealer, err := c.Author(hd)
+				if err != nil {
+					return nil, err
+				}
+				sealers[sealer] = sealers[sealer] + 1
+			}
+			rewards["sealers"] = sealers
+
+			// list block signers as M2(all M2)
+			m2s, err := c.HookGetBlockSigners(chain, stateBlock, header)
+			if err != nil {
+				return nil, err
+			}
+			rewards["m2s"] = m2s
+
+			for sealer, _ := range sealers {
+				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int), Reward: new(big.Int)}
+				voters := contracts.GetVotersFromState(stateBlock, sealer)
 				for _, v := range voters {
-					cap := contracts.GetVoterCapFromState(stateBlock, signer, v)
-					totalCap = new(big.Int).Add(totalCap, cap)
-					{
-						st, ok := voterStat[v]
-						if ok {
-							st.Cap = new(big.Int).Add(st.Cap, cap)
-						} else {
-							voterStat[v] = &Stat{
-								Address: v,
-								Cap:     cap,
-								Reward:  new(big.Int),
-							}
-						}
+					if voterStat[v] == nil {
+						voterStat[v] = &Stat{Address: v, Cap: new(big.Int), Reward: new(big.Int)}
 					}
-					{
-						st, ok := m1Stat[v]
-						if ok {
-							st.Cap = new(big.Int).Add(st.Cap, cap)
-						} else {
-							m1Stat[signer] = &Stat{
-								Address: signer,
-								Cap:     cap,
-								Reward:  new(big.Int),
-							}
-						}
+					cap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
+					totalCap = new(big.Int).Add(totalCap, cap)
+					if st, ok := voterStat[v]; ok {
+						st.Cap = new(big.Int).Add(st.Cap, cap)
+					}
+					if st, ok := m1Stat[sealer]; ok {
+						st.Cap = new(big.Int).Add(st.Cap, cap)
 					}
 				}
 			}
 
 			for signer, signCount := range m2s {
 				totalSignCount = totalSignCount + signCount
-				st, ok := m2Stat[signer]
-				if ok {
+				if st, ok := m2Stat[signer]; ok {
 					st.Cap = new(big.Int).Add(st.Cap, big.NewInt(int64(signCount)))
 				} else {
-					m2Stat[signer] = &Stat{
-						Address: signer,
-						Cap:     big.NewInt(int64(signCount)),
-						Reward:  new(big.Int),
-					}
+					m2Stat[signer] = &Stat{Address: signer, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
 				}
 			}
 
@@ -550,13 +526,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if lastNumber == 0 {
 				lastNumber = 1
 			}
-
-			var penaltys []common.Address
-			var exists = make(map[common.Address]bool)
 			epoch, err := c.GetEpoch(chain, c.LastEpoch(number))
 			if err != nil {
 				return nil, err
 			}
+
+			// Count M1 miss seal block by turn
+			sealermiss := sortedmap.New(0, func(i, j interface{}) bool {
+				if i.(int) > j.(int) {
+					return true
+				}
+				return false
+			})
 			for i := number - 1; i >= lastNumber; i-- {
 				hd := chain.GetHeaderByNumber(i)
 				if hd == nil {
@@ -567,12 +548,25 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					return nil, err
 				}
 				turn := epoch.M1(c.Config().Epoch, i)
-				if signer != turn && !exists[turn] {
-					penaltys = append(penaltys, turn)
-					exists[turn] = true
+				if signer != turn {
+					if v, ok := sealermiss.Get(turn); !ok {
+						sealermiss.Insert(turn, 1)
+					} else {
+						miss := v.(int) + 1
+						sealermiss.Insert(turn, miss)
+					}
 				}
 			}
-			return penaltys, nil
+
+			var penalties = make([]common.Address, 0)
+			if it, err := sealermiss.IterCh(); err == nil {
+				for rec := range it.Records() {
+					if rec.Val.(int) > common.EpochBlockSealMissAllow {
+						penalties = append(penalties, rec.Key.(common.Address))
+					}
+				}
+			}
+			return penalties, nil
 		}
 	}
 

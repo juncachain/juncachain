@@ -36,9 +36,10 @@ const (
 	RewardFoundationPercent = int64(10)
 	MaxMasternodes          = 150
 	MaxSigners              = 99
-	EpochBlockSecret        = 10
-	EpochBlockOpening       = 5
-	EpochBlockSignShift     = 10
+	EpochBlockSecret        = 30
+	EpochBlockOpening       = 20
+	EpochBlockSignWiggle    = 15
+	EpochBlockSealMissAllow = 2
 )
 
 const (

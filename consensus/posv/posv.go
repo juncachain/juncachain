@@ -49,9 +49,9 @@ import (
 )
 
 const (
-	checkpointInterval = 1024 // Number of blocks after which to save the vote snapshot to the database
 	inmemorySnapshots  = 128  // Number of recent vote snapshots to keep in memory
 	inmemorySignatures = 4096 // Number of recent block signatures to keep in memory
+	inmemoryEpochs     = 128  // Number of recent Epoch to keep in memory
 
 	wiggleTime = 500 * time.Millisecond // Random delay (per signer) to allow concurrent signers
 )
@@ -179,14 +179,11 @@ type PoSV struct {
 
 	recents    *lru.ARCCache // Snapshots for recent block to speed up reorgs
 	signatures *lru.ARCCache // Signatures of recent blocks to speed up mining
-
-	proposals map[common.Address]bool // Current list of proposals we are pushing
+	epochs     *lru.ARCCache // Epochs of recent blocks to speed up mining
 
 	signer common.Address // Ethereum address of the signing key
 	signFn SignerFn       // Signer function to authorize hashes with
-	lock   sync.RWMutex   // Protects the signer and proposals fields
-
-	checkpoints *lru.ARCCache
+	lock   sync.RWMutex   // Protects the signer fields
 
 	endpoint string
 	once     sync.Once
@@ -213,15 +210,14 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	// Allocate the snapshot caches and create the engine
 	recents, _ := lru.NewARC(inmemorySnapshots)
 	signatures, _ := lru.NewARC(inmemorySignatures)
-	checkpoints, _ := lru.NewARC(inmemorySnapshots)
+	epochs, _ := lru.NewARC(inmemoryEpochs)
 
 	return &PoSV{
-		config:      &conf,
-		db:          db,
-		recents:     recents,
-		signatures:  signatures,
-		proposals:   make(map[common.Address]bool),
-		checkpoints: checkpoints,
+		config:     &conf,
+		db:         db,
+		recents:    recents,
+		signatures: signatures,
+		epochs:     epochs,
 	}
 }
 
@@ -534,8 +530,8 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 
 	if c.HookBlockSign != nil {
-		if number > common.EpochBlockSignShift {
-			toSignBlockNumber := number - common.EpochBlockSignShift
+		if number > common.EpochBlockSignWiggle {
+			toSignBlockNumber := number - common.EpochBlockSignWiggle
 			toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber)
 			if toSignBlock != nil {
 				if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
@@ -566,9 +562,9 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 			log.Crit("[PoSV]HookReward", "err", err)
 		}
 
-		data, err := json.Marshal(rewards)
+		data, err := json.MarshalIndent(rewards, "", "  ")
 		if err == nil {
-			err = ioutil.WriteFile(filepath.Join(c.config.InstanceDir, header.Number.String()+"."+header.Hash().Hex()), data, 0644)
+			err = ioutil.WriteFile(filepath.Join(c.config.InstanceDir, header.Number.String()+"_epoch.json"), data, 0644)
 		}
 		if err != nil {
 			log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
@@ -626,7 +622,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return err
 	}
 	if !epoch.IsM1(signer) {
-		return errors.Errorf("coinbase:%s is not M1", signer.Hex())
+		return errors.Errorf("coinbase:%s is not M1,number:%d", signer.Hex(), number)
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -646,7 +642,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
 	if nextNumber > number {
-		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second
+		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}
 
 	// Sign all the things!
@@ -772,7 +768,7 @@ func (c *PoSV) GetEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch
 }
 
 func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {
-	v, ok := c.checkpoints.Get(epoch)
+	v, ok := c.epochs.Get(epoch)
 	if ok {
 		return v.(*Epoch), nil
 	}
@@ -783,7 +779,7 @@ func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch
 		if err := extra.FromBytes(header.Extra); err != nil {
 			return nil, err
 		}
-		c.checkpoints.Add(epoch, &extra.Epoch)
+		c.epochs.Add(epoch, &extra.Epoch)
 		return &extra.Epoch, nil
 	}
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
@@ -821,12 +817,12 @@ func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
 	}
 	epoch.M2s = m2s
 
-	c.checkpoints.Add(epoch, epoch)
+	c.epochs.Add(epoch, epoch)
 	return epoch, nil
 }
 
 func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
-	c.checkpoints.Add(epoch, extra)
+	c.epochs.Add(epoch, extra)
 }
 
 func (c *PoSV) Config() *params.PoSVConfig {
@@ -878,28 +874,4 @@ func (c *PoSV) lastSignedBlock(chain consensus.ChainHeaderReader, number uint64,
 		}
 	}
 	return nil
-}
-
-func (c *PoSV) lastTurnToSignBlock(chain consensus.ChainHeaderReader, number uint64, signer common.Address) *types.Header {
-	for i := 0; i < common.MaxSigners; i++ {
-		header := chain.GetHeaderByNumber(number)
-		if header == nil {
-			break
-		}
-		// header.Coinbase indicate who's turn to sign block
-		if header.Coinbase == signer {
-			c.recents.Add(signer, header.Number.Uint64())
-			return header
-		}
-		number = number - 1
-		if number == 0 {
-			break
-		}
-	}
-	return nil
-}
-
-func JSONPretty(v interface{}) string {
-	bz, _ := json.MarshalIndent(v, "", " ")
-	return string(bz)
 }
