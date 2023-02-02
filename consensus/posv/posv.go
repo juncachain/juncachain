@@ -642,7 +642,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
 	if nextNumber > number {
-		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
+		delay = delay + time.Duration((nextNumber-number-1)*c.config.Period)*time.Second + wiggleTime
 	}
 
 	// Sign all the things!
