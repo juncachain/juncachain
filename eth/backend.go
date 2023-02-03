@@ -552,8 +552,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					if v, ok := sealermiss.Get(turn); !ok {
 						sealermiss.Insert(turn, 1)
 					} else {
-						miss := v.(int) + 1
-						sealermiss.Insert(turn, miss)
+						sealermiss.Replace(turn, v.(int)+1)
 					}
 				}
 			}
