@@ -18,6 +18,7 @@ package posv
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/juncachain/juncachain/common"
@@ -28,37 +29,12 @@ import (
 	"github.com/juncachain/juncachain/rpc"
 )
 
-// API is a user facing RPC API to allow controlling the signer and voting
-// mechanisms of the proof-of-authority scheme.
+// API is a user facing RPC API to allow query the signer and epoch
+// mechanisms of the proof-of-stake voting scheme.
 type API struct {
 	chain consensus.ChainHeaderReader
 	posv  *PoSV
 }
-
-// GetSnapshot retrieves the state snapshot at a given block.
-//func (api *API) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
-//	// Retrieve the requested block number (or current if none requested)
-//	var header *types.Header
-//	if number == nil || *number == rpc.LatestBlockNumber {
-//		header = api.chain.CurrentHeader()
-//	} else {
-//		header = api.chain.GetHeaderByNumber(uint64(number.Int64()))
-//	}
-//	// Ensure we have an actually valid block and return its snapshot
-//	if header == nil {
-//		return nil, errUnknownBlock
-//	}
-//	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-//}
-
-// GetSnapshotAtHash retrieves the state snapshot at a given block.
-//func (api *API) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
-//	header := api.chain.GetHeaderByHash(hash)
-//	if header == nil {
-//		return nil, errUnknownBlock
-//	}
-//	return api.posv.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
-//}
 
 // GetSigners retrieves the list of authorized signers at the specified block.
 func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
@@ -149,4 +125,12 @@ func (api *API) GetSigner(rlpOrBlockNr *blockNumberOrHashOrRLP) (common.Address,
 		return common.Address{}, err
 	}
 	return api.posv.Author(header)
+}
+
+func (api *API) GetEpoch(number *rpc.BlockNumber) ([]byte, error) {
+	chainDb := api.posv.db
+	if number == nil {
+		return nil, errors.New("bad epoch number")
+	}
+	return chainDb.Get([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, number.Int64())))
 }

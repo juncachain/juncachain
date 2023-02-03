@@ -19,6 +19,7 @@ package eth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
@@ -405,6 +406,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				Reward  *big.Int       `json:"reward"`
 			}
 			var (
+				epoch          = make(map[string]interface{})
 				rewards        = make(map[string]interface{})
 				m1Stat         = make(map[common.Address]*Stat)
 				m2Stat         = make(map[common.Address]*Stat)
@@ -437,7 +439,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if err != nil {
 				return nil, err
 			}
-			rewards["m2s"] = m2s
+			rewards["signmiss"] = m2s
 
 			for sealer, _ := range sealers {
 				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int), Reward: new(big.Int)}
@@ -510,11 +512,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if err := extra.FromBytes(header.Extra); err != nil {
 				return nil, err
 			}
-			rewards["epoch"] = extra.Epoch
-
-			bz, _ := rlp.EncodeToBytes(rewards)
+			epoch["epoch"] = extra.Epoch
+			epoch["rewards"] = rewards
+			bz, _ := json.Marshal(epoch)
 			_ = chainDb.Put([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, number/c.Config().Epoch)), bz)
-			return rewards, nil
+			return epoch, nil
 		}
 
 		c.HookPenalty = func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
