@@ -153,6 +153,15 @@ func (e *Epoch) M2(epochLength uint64, number uint64) []common.Address {
 	return m2s
 }
 
+func (e *Epoch) IsM2(address common.Address) bool {
+	for _, v := range e.M2s {
+		if v == address {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Epoch) M2Slice() []common.Address {
 	var m2s []common.Address
 	for _, v := range e.M2s {

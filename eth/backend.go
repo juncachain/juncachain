@@ -323,13 +323,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return masternodes, nil
 		}
 
-		c.HookBlockSign = func(toSign, current *types.Header) error {
-			eb, err := eth.Etherbase()
-			if err != nil {
-				log.Error("Cannot get etherbase for block sign", "err", err)
-				return errors.Errorf("etherbase missing: %v", err)
-			}
-			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, eb, toSign, current); err != nil {
+		c.HookBlockSign = func(signer common.Address, toSign, current *types.Header) error {
+			if err := contracts.CreateTransactionSign(chainConfig, eth.txPool, eth.accountManager, signer, toSign, current); err != nil {
 				return errors.Errorf("Fail to create tx block sign for importing block: %v", err)
 			}
 			return nil
@@ -359,37 +354,25 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return signCount, nil
 		}
 
-		c.HookSetRandomizeSecret = func(header *types.Header) error {
+		c.HookSetRandomizeSecret = func(signer common.Address, header *types.Header) error {
 			checkNumber := header.Number.Uint64() % c.Config().Epoch
 			if c.Config().Epoch-checkNumber != common.EpochBlockSecret {
 				return nil
 			}
 			log.Info("[PoSV]Is check number to set secret", "number", header.Number.Uint64())
-
-			eb, err := eth.Etherbase()
-			if err != nil {
-				log.Error("Cannot get etherbase for set random secret", "err", err)
-				return errors.Errorf("etherbase missing: %v", err)
-			}
-
-			if err := contracts.CreateTransactionSetSecret(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+			if err := contracts.CreateTransactionSetSecret(chainConfig, eth.txPool, eth.accountManager, header, chainDb, signer); err != nil {
 				return errors.Errorf("Fail to create tx set secret for importing block: %v", err)
 			}
 			return nil
 		}
 
-		c.HookSetRandomizeOpening = func(header *types.Header) error {
+		c.HookSetRandomizeOpening = func(signer common.Address, header *types.Header) error {
 			checkNumber := header.Number.Uint64() % c.Config().Epoch
 			if c.Config().Epoch-checkNumber != common.EpochBlockOpening {
 				return nil
 			}
 			log.Info("[PoSV]Is check number to set opening", "number", header.Number.Uint64())
-			eb, err := eth.Etherbase()
-			if err != nil {
-				log.Error("Cannot get etherbase for set random opening", "err", err)
-				return errors.Errorf("etherbase missing: %v", err)
-			}
-			if err := contracts.CreateTransactionSetOpening(chainConfig, eth.txPool, eth.accountManager, header, chainDb, eb); err != nil {
+			if err := contracts.CreateTransactionSetOpening(chainConfig, eth.txPool, eth.accountManager, header, chainDb, signer); err != nil {
 				return errors.Errorf("Fail to create tx set opening for importing block: %v", err)
 			}
 			return nil

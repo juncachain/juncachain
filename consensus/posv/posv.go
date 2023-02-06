@@ -193,10 +193,10 @@ type PoSV struct {
 	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
 	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
-	HookBlockSign           func(toSign, current *types.Header) error
 	HookGetBlockSigners     func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error)
-	HookSetRandomizeSecret  func(header *types.Header) error
-	HookSetRandomizeOpening func(header *types.Header) error
+	HookBlockSign           func(signer common.Address, toSign, current *types.Header) error
+	HookSetRandomizeSecret  func(signer common.Address, header *types.Header) error
+	HookSetRandomizeOpening func(signer common.Address, header *types.Header) error
 }
 
 // New creates a PoSV proof-of-authority consensus engine with the initial
@@ -517,19 +517,19 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		header.Time = uint64(time.Now().Unix())
 	}
 
-	if c.HookSetRandomizeSecret != nil {
-		if err := c.HookSetRandomizeSecret(header); err != nil {
+	if c.HookSetRandomizeSecret != nil && epoch.IsM1(signer) {
+		if err := c.HookSetRandomizeSecret(signer, header); err != nil {
 			log.Error("[PoSV]HookSetRandomizeSecret", "err", err.Error())
 		}
 	}
 
-	if c.HookSetRandomizeOpening != nil {
-		if err := c.HookSetRandomizeOpening(header); err != nil {
+	if c.HookSetRandomizeOpening != nil && epoch.IsM1(signer) {
+		if err := c.HookSetRandomizeOpening(signer, header); err != nil {
 			log.Error("[PoSV]HookSetRandomizeOpening", "err", err.Error())
 		}
 	}
 
-	if c.HookBlockSign != nil {
+	if c.HookBlockSign != nil && epoch.IsM2(signer) {
 		if number > common.EpochBlockSignWiggle {
 			toSignBlockNumber := number - common.EpochBlockSignWiggle
 			toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber)
@@ -538,7 +538,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 					for _, m2 := range m2s {
 						if m2 == signer {
 							log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
-							if err := c.HookBlockSign(toSignBlock, header); err != nil {
+							if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
 								log.Error("[PoSV]HookBlockSign", "err", err.Error())
 							}
 						}

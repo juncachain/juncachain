@@ -93,13 +93,13 @@ func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, m
 }
 
 // CreateTransactionSetSecret Send tx set secret to smart contract randomize.
-func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, eb common.Address) error {
+func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
-	wallet := etherbaseWallet(manager, eb)
+	wallet := etherbaseWallet(manager, signer)
 	if wallet == nil {
-		return fmt.Errorf("Cannot find etherbase wallet:%s", eb.Hex())
+		return fmt.Errorf("Cannot find etherbase wallet:%s", signer.Hex())
 	}
 
 	// Generate random private key and save into chaindb.
@@ -112,7 +112,7 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 	// Save randomize key into state db.
 	randomizeKeyValue := RandStringByte(32)
 
-	nonce := pool.Nonce(eb)
+	nonce := pool.Nonce(signer)
 	baseFee := header.BaseFee
 	if baseFee == nil {
 		baseFee = new(big.Int).SetUint64(params.InitialBaseFee)
@@ -123,7 +123,7 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 		log.Error("Fail to get tx secret for randomize", "error", err)
 		return err
 	}
-	txSigned, err := wallet.SignTx(accounts.Account{Address: eb}, tx, chainConfig.ChainID)
+	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainConfig.ChainID)
 	if err != nil {
 		log.Error("Fail to create tx secret", "error", err)
 		return err
@@ -131,7 +131,7 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 	// Add tx signed to local tx pool.
 	err = pool.AddLocal(txSigned)
 	if err != nil {
-		log.Error("Fail to add tx secret to local pool.", "error", err, "number", header.Number, "hash", txSigned.Hash().Hex(), "from", eb, "nonce", nonce)
+		log.Error("Fail to add tx secret to local pool.", "error", err, "number", header.Number, "hash", txSigned.Hash().Hex(), "from", signer, "nonce", nonce)
 		return err
 	}
 
@@ -141,13 +141,13 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 }
 
 // CreateTransactionSetOpening Send tx set opening to smart contract randomize.
-func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, eb common.Address) error {
+func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
-	wallet := etherbaseWallet(manager, eb)
+	wallet := etherbaseWallet(manager, signer)
 	if wallet == nil {
-		return fmt.Errorf("Cannot find etherbase wallet:%s", eb.Hex())
+		return fmt.Errorf("Cannot find etherbase wallet:%s", signer.Hex())
 	}
 
 	// Get random private key from chaindb.
@@ -157,7 +157,7 @@ func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxP
 		return err
 	}
 
-	nonce := pool.Nonce(eb)
+	nonce := pool.Nonce(signer)
 	baseFee := header.BaseFee
 	if baseFee == nil {
 		baseFee = new(big.Int).SetUint64(params.InitialBaseFee)
@@ -168,7 +168,7 @@ func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxP
 		log.Error("Fail to get tx opening for randomize", "error", err)
 		return err
 	}
-	txSigned, err := wallet.SignTx(accounts.Account{Address: eb}, tx, chainConfig.ChainID)
+	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainConfig.ChainID)
 	if err != nil {
 		log.Error("Fail to create tx opening", "error", err)
 		return err
@@ -176,7 +176,7 @@ func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxP
 	// Add tx signed to local tx pool.
 	err = pool.AddLocal(txSigned)
 	if err != nil {
-		log.Error("Fail to add tx opening to local pool.", "error", err, "number", header.Number, "hash", txSigned.Hash().Hex(), "from", eb, "nonce", nonce)
+		log.Error("Fail to add tx opening to local pool.", "error", err, "number", header.Number, "hash", txSigned.Hash().Hex(), "from", signer, "nonce", nonce)
 		return err
 	}
 
