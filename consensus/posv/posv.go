@@ -627,7 +627,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 
 	// If we're amongst the recent signers, wait for the next block
 	// only check recent signers if there are more than one signer.
-	if number%c.config.Epoch != 1 {
+	if number%c.config.Epoch != 1 && epoch.M1(c.config.Epoch, number) != signer {
 		parent := chain.GetHeaderByNumber(number - 1)
 		if parent != nil && parent.Number.Uint64() > 0 && epoch.M1Length() > 1 {
 			if pSigner, err := c.Author(parent); err != nil {
