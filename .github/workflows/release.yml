@@ -44,6 +44,6 @@ jobs:
           body: New Release ${{ github.ref_name }}.
           draft: true
           prerelease: false
-          files: junca_${{ github.ref_name }}_Linux_amd64.tar.gz
+          files: junca-linux-amd64-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
