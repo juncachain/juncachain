@@ -33,7 +33,7 @@ jobs:
           echo ${{ github.ref }}
           echo "Tag name from GITHUB_REF_NAME: $GITHUB_REF_NAME"
           echo "Tag name from github.ref_name: ${{  github.ref_name }}"
-          tar -cvf junca_${{ github.ref_name }}_Linux_amd64.tar.gz ./build/bin/junca
+          tar -cvf junca-linux-amd64-${{ github.ref_name }}.tar.gz ./build/bin/junca
 
       - name: Create Release and Upload Release Asset
         uses: softprops/action-gh-release@v1
@@ -42,7 +42,7 @@ jobs:
           tag_name: ${{ github.ref }}
           name: Release ${{ github.ref }}
           body: New Release ${{ github.ref_name }}.
-          draft: false
+          draft: true
           prerelease: false
           files: junca_${{ github.ref_name }}_Linux_amd64.tar.gz
         env:
