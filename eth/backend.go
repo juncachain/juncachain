@@ -906,6 +906,7 @@ func (s *Ethereum) GetClient() (*ethclient.Client, error) {
 				cli, err := ethclient.Dial(s.IPCEndpoint)
 				if err != nil {
 					log.Warn("PoSV ethclient.Dial", "err", err)
+					time.Sleep(time.Millisecond * 100)
 					continue
 				}
 				s.client = cli
