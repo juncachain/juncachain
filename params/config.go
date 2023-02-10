@@ -423,11 +423,11 @@ type PoSVConfig struct {
 
 func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
 	type PoSVConfig struct {
-		Period     uint64
-		Epoch      uint64
-		MinStaked  *math.HexOrDecimal256
-		Reward     *math.HexOrDecimal256
-		Foundation common.Address
+		Period     uint64                `json:"period"`
+		Epoch      uint64                `json:"epoch"`
+		MinStaked  *math.HexOrDecimal256 `json:"minStaked"`
+		Reward     *math.HexOrDecimal256 `json:"reward"`
+		Foundation common.Address        `json:"foundation"`
 	}
 
 	var enc PoSVConfig
@@ -441,11 +441,11 @@ func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
 
 func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
 	type PoSVConfig struct {
-		Period     uint64
-		Epoch      uint64
-		MinStaked  *math.HexOrDecimal256
-		Reward     *math.HexOrDecimal256
-		Foundation common.Address
+		Period     uint64                `json:"period"`
+		Epoch      uint64                `json:"epoch"`
+		MinStaked  *math.HexOrDecimal256 `json:"minStaked"`
+		Reward     *math.HexOrDecimal256 `json:"reward"`
+		Foundation common.Address        `json:"foundation"`
 	}
 	var dec PoSVConfig
 	if err := json.Unmarshal(input, &dec); err != nil {
