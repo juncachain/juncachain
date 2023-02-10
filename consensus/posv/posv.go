@@ -702,7 +702,7 @@ func (c *PoSV) Close() error {
 // controlling the signer voting.
 func (c *PoSV) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 	return []rpc.API{{
-		Namespace: "PoSV",
+		Namespace: "posv",
 		Service:   &API{chain: chain, posv: c},
 	}}
 }
