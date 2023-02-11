@@ -626,7 +626,8 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 			if pSigner, err := c.Author(parent); err != nil {
 				return err
 			} else if pSigner == signer {
-				return errors.New("Signed recently, must wait for others")
+				log.Info("[PoSV]Signed recently, must wait for others", "m1 length", epoch.M1Length())
+				return nil
 			}
 		}
 	}
