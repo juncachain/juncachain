@@ -229,7 +229,6 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Trace("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -237,7 +236,6 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Trace("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -416,8 +414,6 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Trace("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
-
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
@@ -554,7 +550,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Trace("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
 		log.Info("[PoSV]HookReward", "number", header.Number)
 		rewards, err := c.HookReward(chain, state, header)
@@ -578,7 +573,6 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Trace("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -599,7 +593,6 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Trace("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -622,7 +615,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return err
 	}
 	if !epoch.IsM1(signer) {
-		return errors.Errorf("coinbase:%s is not M1,number:%d", signer.Hex(), number)
+		return errors.Errorf("Etherbase %s is not M1 at %d", signer.Hex(), number)
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -642,7 +635,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
 	if nextNumber > number {
-		delay = delay + time.Duration((nextNumber-number-1)*c.config.Period)*time.Second + wiggleTime
+		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}
 
 	// Sign all the things!
@@ -676,7 +669,6 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	log.Trace("[PoSV]CalcDifficulty", "time", time, "parent", parent)
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
@@ -689,7 +681,6 @@ func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *PoSV) SealHash(header *types.Header) common.Hash {
-	log.Trace("[PoSV]SealHash", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return SealHash(header)
 }
 
