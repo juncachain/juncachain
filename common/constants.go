@@ -1,17 +1,11 @@
 package common
 
 const (
-	BlockSignerSMC                    = "0x000000000000000000426C6F636b5369676E6572" // []byte("BlockSigner")
-	MasternodeVotingSMC               = "0x000000004D61737465726E6F6465566f74696e67"
-	RandomizeSMC                      = "0x000000000000000000000052616E646f6D697a65"
-	JuncaFoudation                    = "0x0000000000004a756E6361466F75646174696f6E"
-	TeamAddr                          = "0x0000000000000000000000000000000000000099"
-	TomoXAddr                         = "0x0000000000000000000000000000000000000091"
-	TradingStateAddr                  = "0x0000000000000000000000000000000000000092"
-	TomoXLendingAddress               = "0x0000000000000000000000000000000000000093"
-	TomoXLendingFinalizedTradeAddress = "0x0000000000000000000000000000000000000094"
-	TomoNativeAddress                 = "0x0000000000000000000000000000000000000001"
-	LendingLockAddress                = "0x0000000000000000000000000000000000000011"
+	BlockSignerSMC      = "0x000000000000000000426C6F636b5369676E6572" // []byte("BlockSigner")
+	MasternodeVotingSMC = "0x000000004D61737465726E6F6465566f74696e67"
+	RandomizeSMC        = "0x000000000000000000000052616E646f6D697a65"
+	JuncaFoudation      = "0x0000000000004a756E6361466F75646174696f6E"
+	JuncaJRC21Issuer    = "0x0000000000000000004A52433231497373756572"
 )
 
 // contract Method
@@ -40,6 +34,7 @@ const (
 	EpochBlockOpening       = 20
 	EpochBlockSignWiggle    = 15
 	EpochBlockSealMissAllow = 2
+	BuildInTxGas            = 1 << 18 //262144
 )
 
 const (
