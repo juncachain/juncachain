@@ -26,6 +26,7 @@ contract JRC21Issuer{
     function issueJRC21PresetFixed(
         string memory name,
         string memory symbol,
+        uint8 decimals_,
         address initialAccount,
         uint256 initialBalance,
         uint256 minFee
@@ -33,6 +34,7 @@ contract JRC21Issuer{
         JRC21PresetFixed _token = new JRC21PresetFixed(
             name,
             symbol,
+            decimals_,
             initialAccount,
             initialBalance,
             address(this),
@@ -47,11 +49,13 @@ contract JRC21Issuer{
     function issueJRC21PresetMinter(
         string memory name,
         string memory symbol,
+        uint8 decimals_,
         uint256 minFee
     ) public payable {
         JRC21PresetMinter _token = new JRC21PresetMinter(
             name,
             symbol,
+            decimals_,
             address(this),
             minFee);
         address token = address(_token);
@@ -142,14 +146,17 @@ contract JRC21 is AccessControlEnumerable{
 
 contract JRC21PresetFixed is JRC21,ERC20,ERC20Permit,ERC20Pausable{
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    uint8 private _decimals;
     constructor(
         string memory name,
         string memory symbol,
+        uint8 decimals_,
         address initialAccount,
         uint256 initialBalance,
         address issuer,
         uint256 minFee
     ) ERC20(name, symbol) ERC20Permit(name) JRC21(issuer,minFee) {
+        _decimals = decimals_;
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(PAUSER_ROLE, _msgSender());
         _mint(initialAccount, initialBalance);
@@ -165,6 +172,10 @@ contract JRC21PresetFixed is JRC21,ERC20,ERC20Permit,ERC20Pausable{
         _unpause();
     }
 
+    function decimals() override(ERC20) public view returns(uint8) {
+        return _decimals;
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -177,12 +188,15 @@ contract JRC21PresetFixed is JRC21,ERC20,ERC20Permit,ERC20Pausable{
 contract JRC21PresetMinter is JRC21,ERC20,ERC20Permit,ERC20Burnable,ERC20Pausable{
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    uint8 private _decimals;
     constructor(
         string memory name,
         string memory symbol,
+        uint8 decimals_,
         address issuer,
         uint256 minFee
     ) ERC20(name, symbol) ERC20Permit(name) JRC21(issuer,minFee) {
+        _decimals = decimals_;
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(MINTER_ROLE, _msgSender());
         _setupRole(PAUSER_ROLE, _msgSender());
@@ -201,6 +215,10 @@ contract JRC21PresetMinter is JRC21,ERC20,ERC20Permit,ERC20Burnable,ERC20Pausabl
     function unpause() public virtual {
         require(hasRole(PAUSER_ROLE, _msgSender()), "JRC21PresetMinter: must have pauser role to unpause");
         _unpause();
+    }
+
+    function decimals() override(ERC20) public view returns(uint8) {
+        return _decimals;
     }
 
     function _beforeTokenTransfer(
