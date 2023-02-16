@@ -35,6 +35,7 @@ import (
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/consensus/posv"
 	blockSignerContract "github.com/juncachain/juncachain/contracts/blocksigner"
+	jrc21Contract "github.com/juncachain/juncachain/contracts/jrc21issuer"
 	randomizeContract "github.com/juncachain/juncachain/contracts/randomize"
 	validatorContract "github.com/juncachain/juncachain/contracts/validator"
 	"github.com/juncachain/juncachain/core"
@@ -184,6 +185,9 @@ func (w *wizard) makeGenesis() {
 		}
 		if err := deployRandomizeContract(genesis.Alloc); err != nil {
 			log.Crit("Error on deployRandomizeContract", "err", err)
+		}
+		if err := deployJRC21IssuerContract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployJRC21IssuerContract", "err", err)
 		}
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
@@ -385,7 +389,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 	}
 	validatorAddress, _, err := validatorContract.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
 	if err != nil {
-		log.Error("Can't deploy root registry", "err", err)
+		log.Error("Can't DeployValidator", "err", err)
 		return err
 	}
 	contractBackend.Commit()
@@ -432,7 +436,7 @@ func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAllo
 
 	blockSignerAddress, _, err := blockSignerContract.DeployBlockSigner(transactOpts, contractBackend, big.NewInt(int64(epochNumber)))
 	if err != nil {
-		log.Error("Can't deploy root registry", "err", err)
+		log.Error("Can't DeployBlockSigner", "err", err)
 		return err
 	}
 	contractBackend.Commit()
@@ -479,7 +483,7 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 
 	randomizeAddress, _, err := randomizeContract.DeployRandomize(transactOpts, contractBackend)
 	if err != nil {
-		log.Error("Can't deploy root registry", "err", err)
+		log.Error("Can't DeployRandomize", "err", err)
 		return err
 	}
 	contractBackend.Commit()
@@ -508,6 +512,54 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 	}
 
 	genesisAlloc[common.HexToAddress(common.RandomizeSMC)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{
+		addr: {Balance: big.NewInt(1000000000000000000)}},
+		30000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	transactOpts.GasLimit = 30000000
+
+	contractAddr, _, err := jrc21Contract.DeployJRC21Issuer(transactOpts, contractBackend, big.NewInt(common.BuildInTxGas))
+	if err != nil {
+		log.Error("Can't DeployJRC21Issuer", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, contractAddr, nil)
+
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(contractAddr, f); err != nil {
+		log.Error("can't foreach JRC21Issuer contractAddr", "contractAddr", contractAddr.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.JuncaJRC21Issuer)] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 		Code:    code,
 		Storage: storage,

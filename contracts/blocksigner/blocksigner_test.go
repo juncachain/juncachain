@@ -48,7 +48,7 @@ func TestBlockSigner(t *testing.T) {
 	transactOpts.GasPrice = gasPrice
 	blockSignerAddress, blockSigner, err := DeployBlockSigner(transactOpts, contractBackend, big.NewInt(99))
 	if err != nil {
-		t.Fatalf("can't deploy root registry: %v", err)
+		t.Fatalf("can't DeployBlockSigner: %v", err)
 	}
 	contractBackend.Commit()
 
