@@ -191,12 +191,9 @@ func (st *StateTransition) to() common.Address {
 	return *st.msg.To()
 }
 
-func (st *StateTransition) buyGas(buildInTx bool) error {
-	var mgval = new(big.Int)
-	if !buildInTx {
-		mgval = mgval.SetUint64(st.msg.Gas())
-		mgval = mgval.Mul(mgval, st.gasPrice)
-	}
+func (st *StateTransition) buyGas() error {
+	mgval := new(big.Int).SetUint64(st.msg.Gas())
+	mgval = mgval.Mul(mgval, st.gasPrice)
 	balanceCheck := mgval
 	if st.gasFeeCap != nil {
 		balanceCheck = new(big.Int).SetUint64(st.msg.Gas())
@@ -213,10 +210,23 @@ func (st *StateTransition) buyGas(buildInTx bool) error {
 
 	st.initialGas = st.msg.Gas()
 	st.state.SubBalance(st.msg.From(), mgval)
-	// mint gas
-	if buildInTx {
-		st.gas = common.BuildInTxGas
+	return nil
+}
+
+func (st *StateTransition) mintGas() error {
+	mgval := new(big.Int).SetUint64(st.msg.Gas())
+	mgval = mgval.Mul(mgval, st.gasPrice)
+	var balanceCheck = st.value
+	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
+		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 	}
+	if err := st.gp.SubGas(st.msg.Gas()); err != nil {
+		return err
+	}
+	st.gas += st.msg.Gas()
+
+	st.initialGas = st.msg.Gas()
+	st.state.SubBalance(st.msg.From(), mgval)
 	return nil
 }
 
@@ -265,7 +275,10 @@ func (st *StateTransition) preCheck(buildInTx bool) error {
 			}
 		}
 	}
-	return st.buyGas(buildInTx)
+	if buildInTx {
+		return st.mintGas()
+	}
+	return st.buyGas()
 }
 
 // TransitionDb will transition the state by applying the current message and
