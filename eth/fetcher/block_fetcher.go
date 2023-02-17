@@ -180,14 +180,15 @@ type BlockFetcher struct {
 	queued map[common.Hash]*blockOrHeaderInject // Set of already queued blocks (to dedup imports)
 
 	// Callbacks
-	getHeader      HeaderRetrievalFn  // Retrieves a header from the local chain
-	getBlock       blockRetrievalFn   // Retrieves a block from the local chain
-	verifyHeader   headerVerifierFn   // Checks if a block's headers have a valid proof of work
-	broadcastBlock blockBroadcasterFn // Broadcasts a block to connected peers
-	chainHeight    chainHeightFn      // Retrieves the current chain's height
-	insertHeaders  headersInsertFn    // Injects a batch of headers into the chain
-	insertChain    chainInsertFn      // Injects a batch of blocks into the chain
-	dropPeer       peerDropFn         // Drops a peer for misbehaving
+	getHeader      HeaderRetrievalFn                                    // Retrieves a header from the local chain
+	getBlock       blockRetrievalFn                                     // Retrieves a block from the local chain
+	verifyHeader   headerVerifierFn                                     // Checks if a block's headers have a valid proof of work
+	broadcastBlock blockBroadcasterFn                                   // Broadcasts a block to connected peers
+	chainHeight    chainHeightFn                                        // Retrieves the current chain's height
+	insertHeaders  headersInsertFn                                      // Injects a batch of headers into the chain
+	insertChain    chainInsertFn                                        // Injects a batch of blocks into the chain
+	dropPeer       peerDropFn                                           // Drops a peer for misbehaving
+	doubleVerifyFn func(block *types.Block) (*types.Block, bool, error) // Verify a block and sign it, return the block with verifycation
 
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
@@ -816,7 +817,7 @@ func (f *BlockFetcher) importHeaders(peer string, header *types.Header) {
 			return
 		}
 		// Validate the header and if something went wrong, drop the peer
-		if err := f.verifyHeader(header); err != nil && err != consensus.ErrFutureBlock {
+		if err := f.verifyHeader(header); err != nil && err != consensus.ErrFutureBlock && err != consensus.ErrMissVerification {
 			log.Debug("Propagated header verification failed", "peer", peer, "number", header.Number, "hash", hash, "err", err)
 			f.dropPeer(peer)
 			return
@@ -850,6 +851,7 @@ func (f *BlockFetcher) importBlocks(peer string, block *types.Block) {
 			log.Debug("Unknown parent of propagated block", "peer", peer, "number", block.Number(), "hash", hash, "parent", block.ParentHash())
 			return
 		}
+	again:
 		// Quickly validate the header and propagate the block if it passes
 		switch err := f.verifyHeader(block.Header()); err {
 		case nil:
@@ -859,7 +861,20 @@ func (f *BlockFetcher) importBlocks(peer string, block *types.Block) {
 
 		case consensus.ErrFutureBlock:
 			// Weird future block, don't fail, but neither propagate
-
+		case consensus.ErrMissVerification:
+			if f.doubleVerifyFn != nil {
+				newBlock, isM2, err := f.doubleVerifyFn(block)
+				if err != nil {
+					log.Error("doubleVerifyFn", "err", err)
+					return
+				}
+				if !isM2 {
+					go f.broadcastBlock(block, true)
+					return
+				}
+				block = newBlock
+				goto again
+			}
 		default:
 			// Something went very wrong, drop the peer
 			log.Debug("Propagated block verification failed", "peer", peer, "number", block.Number(), "hash", hash, "err", err)
@@ -936,4 +951,8 @@ func (f *BlockFetcher) forgetBlock(hash common.Hash) {
 		}
 		delete(f.queued, hash)
 	}
+}
+
+func (f *BlockFetcher) SetDoubleVerifyFn(fn func(block *types.Block) (*types.Block, bool, error)) {
+	f.doubleVerifyFn = fn
 }

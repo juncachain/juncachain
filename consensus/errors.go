@@ -38,4 +38,7 @@ var (
 	// ErrInvalidTerminalBlock is returned if a block is invalid wrt. the terminal
 	// total difficulty.
 	ErrInvalidTerminalBlock = errors.New("invalid terminal block")
+
+	// ErrMissVerification is returned when a block's verification is miss
+	ErrMissVerification = errors.New("miss verification")
 )

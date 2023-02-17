@@ -260,6 +260,36 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 		}
 
+		eth.handler.blockFetcher.SetDoubleVerifyFn(func(block *types.Block) (*types.Block, bool, error) {
+			lastCheckpoint := c.LastEpoch(block.NumberU64())
+			var extra posv.Extra
+			if err := extra.FromBytes(eth.blockchain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
+				return nil, false, err
+			}
+			if !extra.Epoch.IsM1(eth.etherbase) {
+				log.Error("-------is not verifier", eth.etherbase.Hex())
+				return nil, false, nil
+			}
+
+			eb := accounts.Account{
+				Address: eth.etherbase,
+				URL:     accounts.URL{},
+			}
+			if w, err := eth.accountManager.Find(eb); err == nil && w != nil {
+				return nil, false, errors.Errorf("Caonnot found etherbase %s", eth.etherbase)
+			} else {
+				header := block.Header()
+				sighash, err := w.SignData(accounts.Account{Address: eth.etherbase}, accounts.MimetypePoSV, posv.SealHash(header).Bytes())
+				log.Error("-------verify block", "number", block.NumberU64(), "signature", common.BytesToHash(sighash).Hex())
+				if err != nil || sighash == nil {
+					log.Error("Can't get signature hash of m2", "sighash", sighash, "err", err)
+					return block, false, err
+				}
+				header.Verification = sighash
+				return types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles()), true, nil
+			}
+		})
+
 		eth.TxPool().IsSigner = func(address common.Address) bool {
 			currentHeader := eth.blockchain.CurrentHeader()
 			header := currentHeader

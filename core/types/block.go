@@ -92,6 +92,9 @@ type Header struct {
 		// Random was added during the merge and contains the BeaconState randomness
 		Random common.Hash `json:"random" rlp:"optional"`
 	*/
+
+	// Double Validation
+	Verification []byte `json:"verification" rlp:"optional"`
 }
 
 // field type overrides for gencodec

@@ -286,6 +286,9 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	if len(header.Extra) < extraVanity+extraSeal {
 		return errMissingSignature
 	}
+	if len(header.Verification) < extraSeal {
+		return consensus.ErrMissVerification
+	}
 	// Ensure that the extra-data contains an epoch on checkpoint, but none otherwise
 	epochBytes := len(header.Extra) - extraVanity - extraSeal
 	if !checkpoint && epochBytes != 0 {
