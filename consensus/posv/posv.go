@@ -369,6 +369,13 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
+		epoch, err := c.makeEpoch(number)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(epoch.ToBytes(), extra.Epoch.ToBytes()) {
+			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), epoch.String())
+		}
 	}
 	// All basic checks passed, verify the seal and return
 	return c.verifySeal(chain, header, parents)
