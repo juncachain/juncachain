@@ -369,12 +369,12 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
-		epoch, err := c.makeEpoch(number)
+		newEpoch, err := c.makeEpoch(chain, header)
 		if err != nil {
 			return err
 		}
-		if !bytes.Equal(epoch.ToBytes(), extra.Epoch.ToBytes()) {
-			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), epoch.String())
+		if !bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
+			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), newEpoch.String())
 		}
 	}
 	// All basic checks passed, verify the seal and return
@@ -458,52 +458,11 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if header.Coinbase == common.ZeroAddress {
 			return nil
 		}
-		nextEpoch, err := c.makeEpoch(number)
+		newEpoch, err := c.makeEpoch(chain, header)
 		if err != nil {
 			return err
 		}
-		if c.HookPenalty != nil {
-			log.Info("[PoSV]HookPenalty", "number", header.Number)
-			penaltys, err := c.HookPenalty(chain, header)
-			if err != nil {
-				log.Error("[PoSV]HookPenalty", "err", err)
-			}
-			if len(penaltys) > 0 {
-				nextEpoch.Penalties = make([]common.Address, len(penaltys))
-				for i, v := range penaltys {
-					nextEpoch.Penalties[i] = v
-					log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
-				}
-			}
-			penalized := func(address common.Address) bool {
-				for _, v := range penaltys {
-					if v == address {
-						return true
-					}
-				}
-				return false
-			}
-
-			if len(penaltys) > 0 {
-				var m1s MasterNodes
-				var m2s []common.Address
-				for _, v := range nextEpoch.M1s {
-					if !penalized(v.Address) {
-						m1s = append(m1s, v)
-					}
-				}
-				for _, v := range nextEpoch.M2s {
-					if !penalized(v) {
-						m2s = append(m2s, v)
-					}
-				}
-				if len(m1s) > 0 && len(m2s) > 0 {
-					nextEpoch.M1s = m1s
-					nextEpoch.M2s = m2s
-				}
-			}
-		}
-		header.Extra = append(header.Extra, nextEpoch.ToBytes()...)
+		header.Extra = append(header.Extra, newEpoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -784,7 +743,8 @@ func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
+func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, header *types.Header) (*Epoch, error) {
+	number := header.Number.Uint64()
 	if number%c.config.Epoch != 0 {
 		return nil, errors.New("Not checkpoint")
 	}
@@ -816,8 +776,13 @@ func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
 	}
 	epoch.M2s = m2s
 
-	c.epochs.Add(epoch, epoch)
-	return epoch, nil
+	newEpoch, err := c.penalty(chain, header, epoch)
+	if err != nil {
+		return nil, err
+	}
+
+	c.epochs.Add(newEpoch, newEpoch)
+	return newEpoch, nil
 }
 
 func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
@@ -873,4 +838,49 @@ func (c *PoSV) lastSignedBlock(chain consensus.ChainHeaderReader, number uint64,
 		}
 	}
 	return nil
+}
+
+func (c *PoSV) penalty(chain consensus.ChainHeaderReader, header *types.Header, epoch *Epoch) (*Epoch, error) {
+	if c.HookPenalty != nil {
+		log.Info("[PoSV]HookPenalty", "number", header.Number.Uint64())
+		penaltys, err := c.HookPenalty(chain, header)
+		if err != nil {
+			return epoch, err
+		}
+		if len(penaltys) > 0 {
+			epoch.Penalties = make([]common.Address, len(penaltys))
+			for i, v := range penaltys {
+				epoch.Penalties[i] = v
+				log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
+			}
+		}
+		penalized := func(address common.Address) bool {
+			for _, v := range penaltys {
+				if v == address {
+					return true
+				}
+			}
+			return false
+		}
+
+		if len(penaltys) > 0 {
+			var m1s MasterNodes
+			var m2s []common.Address
+			for _, v := range epoch.M1s {
+				if !penalized(v.Address) {
+					m1s = append(m1s, v)
+				}
+			}
+			for _, v := range epoch.M2s {
+				if !penalized(v) {
+					m2s = append(m2s, v)
+				}
+			}
+			if len(m1s) > 0 && len(m2s) > 0 {
+				epoch.M1s = m1s
+				epoch.M2s = m2s
+			}
+		}
+	}
+	return epoch, nil
 }
