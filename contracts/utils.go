@@ -230,7 +230,7 @@ func BuildTxOpeningRandomize(nonce uint64, gasPrice *big.Int, randomizeAddr comm
 
 // GetCandidates get candidates and caps from contract
 func GetCandidates(client *ethclient.Client, number *big.Int) (map[common.Address]*big.Int, error) {
-	addr := common.HexToAddress(common.MasternodeVotingSMC)
+	addr := common.HexToAddress(common.ValidatorSMC)
 	validator, err := contractValidator.NewJuncaValidator(addr, client)
 	if err != nil {
 		return nil, err
