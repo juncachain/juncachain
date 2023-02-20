@@ -2722,6 +2722,7 @@ contract JRC21Issuer{
         uint256 initialBalance,
         uint256 minFee
     ) public payable {
+        require(msg.value >= 50000 ether,"50,000 tokens must be recharged to issue JRC21");
         JRC21PresetFixed _token = new JRC21PresetFixed(
             name,
             symbol,
@@ -2743,6 +2744,7 @@ contract JRC21Issuer{
         uint8 decimals_,
         uint256 minFee
     ) public payable {
+        require(msg.value >= 50000 ether,"50,000 tokens must be recharged to issue JRC21");
         JRC21PresetMinter _token = new JRC21PresetMinter(
             name,
             symbol,
