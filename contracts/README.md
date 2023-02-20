@@ -9,6 +9,5 @@ step 1: generate contract abi and bin with [solc](https://github.com/ethereum/so
 
 step 2:generate golang code
 ```
-- cd cmd/bin/abigen && go build
 - go run ../../cmd/abigen/ --abi contract/build/BlockSigner.abi --bin contract/build/BlockSigner.bin --pkg contract --type BlockSigner --out contract/BlockSigner.go
 ```

@@ -143,7 +143,7 @@ func (w *wizard) makeGenesis() {
 
 		fmt.Println()
 		fmt.Println("What is foundation wallet address? (default = 0x0000000000004a756E6361466F75646174696f6E)")
-		genesis.Config.Posv.Foundation = w.readDefaultAddress(common.HexToAddress(common.JuncaFoudation))
+		genesis.Config.Posv.Foundation = w.readDefaultAddress(common.HexToAddress(common.JuncaFoundation))
 
 		// We also need the initial list of signers
 		fmt.Println()
@@ -417,7 +417,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 		return err
 	}
 
-	genesisAlloc[common.HexToAddress(common.MasternodeVotingSMC)] = core.GenesisAccount{
+	genesisAlloc[common.HexToAddress(common.ValidatorSMC)] = core.GenesisAccount{
 		Balance: new(big.Int).Mul(stakeCap, big.NewInt(int64(len(validatorCaps)))),
 		Code:    code,
 		Storage: storage,
@@ -559,7 +559,7 @@ func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
 		return err
 	}
 
-	genesisAlloc[common.HexToAddress(common.JuncaJRC21Issuer)] = core.GenesisAccount{
+	genesisAlloc[common.HexToAddress(common.JRC21IssuerSMC)] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 		Code:    code,
 		Storage: storage,
