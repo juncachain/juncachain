@@ -601,6 +601,10 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
+	if number == 1 && nextNumber != number {
+		log.Info("[PoSV]First block must be sealed in order")
+		return nil
+	}
 	if nextNumber > number {
 		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}
