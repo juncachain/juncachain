@@ -1560,7 +1560,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 
 		// If there are any still remaining, mark as ignored
 		return it.index, err
-
+	case errors.Is(err, consensus.ErrMissVerification):
+		return it.index, err
 	// Some other error(except ErrKnownBlock) occurred, abort.
 	// ErrKnownBlock is allowed here since some known blocks
 	// still need re-execution to generate snapshots that are missing

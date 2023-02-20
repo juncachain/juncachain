@@ -953,6 +953,6 @@ func (f *BlockFetcher) forgetBlock(hash common.Hash) {
 	}
 }
 
-func (f *BlockFetcher) SetDoubleVerifyFn(fn func(block *types.Block) (*types.Block, bool, error)) {
+func (f *BlockFetcher) SetDoubleVerifyHook(fn func(block *types.Block) (*types.Block, bool, error)) {
 	f.doubleVerifyFn = fn
 }

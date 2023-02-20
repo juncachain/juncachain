@@ -21,12 +21,14 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	ethereum "github.com/juncachain/juncachain"
 	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/core/rawdb"
 	"github.com/juncachain/juncachain/core/state/snapshot"
 	"github.com/juncachain/juncachain/core/types"
@@ -88,6 +90,12 @@ type peerDropFn func(id string)
 // badBlockFn is a callback for the async beacon sync to notify the caller that
 // the origin header requested to sync to, produced a chain with a bad block.
 type badBlockFn func(invalid *types.Header, origin *types.Header)
+
+// blockBroadcasterFn is a callback type for broadcasting a block to connected peers.
+type blockBroadcasterFn func(block *types.Block, propagate bool)
+
+// doubleVerifyFn is a callback type for verify a block by M2.
+type doubleVerifyFn func(block *types.Block) (*types.Block, bool, error)
 
 // headerTask is a set of downloaded headers to queue along with their precomputed
 // hashes to avoid constant rehashing.
@@ -153,6 +161,10 @@ type Downloader struct {
 	bodyFetchHook    func([]*types.Header) // Method to call upon starting a block body fetch
 	receiptFetchHook func([]*types.Header) // Method to call upon starting a receipt fetch
 	chainInsertHook  func([]*fetchResult)  // Method to call upon inserting a chain of blocks (possibly in multiple invocations)
+
+	// for dv
+	broadcastBlock blockBroadcasterFn // Broadcasts a block to connected peers
+	doubleVerifyFn doubleVerifyFn     // DoubleVerify a block
 }
 
 // LightChain encapsulates functions required to synchronise a light chain.
@@ -209,7 +221,7 @@ type BlockChain interface {
 }
 
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, success func()) *Downloader {
+func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, lightchain LightChain, dropPeer peerDropFn, broadcastBlock blockBroadcasterFn, success func()) *Downloader {
 	if lightchain == nil {
 		lightchain = chain
 	}
@@ -226,6 +238,7 @@ func New(checkpoint uint64, stateDb ethdb.Database, mux *event.TypeMux, chain Bl
 		quitCh:         make(chan struct{}),
 		SnapSyncer:     snap.NewSyncer(stateDb),
 		stateSyncStart: make(chan *stateSync),
+		broadcastBlock: broadcastBlock,
 	}
 	dl.skeleton = newSkeleton(stateDb, dl.peers, dropPeer, newBeaconBackfiller(dl, success))
 
@@ -336,6 +349,10 @@ func (d *Downloader) LegacySync(id string, head common.Hash, td, ttd *big.Int, m
 	switch err {
 	case nil, errBusy, errCanceled:
 		return err
+	}
+	if strings.Contains(err.Error(), consensus.ErrMissVerification.Error()) {
+		log.Info("------LegacySync", "err", err)
+		return nil
 	}
 	if errors.Is(err, errInvalidChain) || errors.Is(err, errBadPeer) || errors.Is(err, errTimeout) ||
 		errors.Is(err, errStallingPeer) || errors.Is(err, errUnsyncedPeer) || errors.Is(err, errEmptyHeaderSet) ||
@@ -1548,27 +1565,70 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 	// Downloaded blocks are always regarded as trusted after the
 	// transition. Because the downloaded chain is guided by the
 	// consensus-layer.
-	if index, err := d.blockchain.InsertChain(blocks); err != nil {
-		if index < len(results) {
-			log.Debug("Downloaded item processing failed", "number", results[index].Header.Number, "hash", results[index].Header.Hash(), "err", err)
+	//if index, err := d.blockchain.InsertChain(blocks); err != nil {
+	//	if index < len(results) {
+	//		log.Debug("Downloaded item processing failed", "number", results[index].Header.Number, "hash", results[index].Header.Hash(), "err", err)
+	//
+	//		// In post-merge, notify the engine API of encountered bad chains
+	//		if d.badBlock != nil {
+	//			head, _, err := d.skeleton.Bounds()
+	//			if err != nil {
+	//				log.Error("Failed to retrieve beacon bounds for bad block reporting", "err", err)
+	//			} else {
+	//				d.badBlock(blocks[index].Header(), head)
+	//			}
+	//		}
+	//	} else {
+	//		// The InsertChain method in blockchain.go will sometimes return an out-of-bounds index,
+	//		// when it needs to preprocess blocks to import a sidechain.
+	//		// The importer will put together a new list of blocks to import, which is a superset
+	//		// of the blocks delivered from the downloader, and the indexing will be off.
+	//		log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
+	//	}
+	//	return fmt.Errorf("%w: %v", errInvalidChain, err)
+	//}
+	return d.insertChain(blocks)
+}
 
-			// In post-merge, notify the engine API of encountered bad chains
-			if d.badBlock != nil {
-				head, _, err := d.skeleton.Bounds()
-				if err != nil {
-					log.Error("Failed to retrieve beacon bounds for bad block reporting", "err", err)
-				} else {
-					d.badBlock(blocks[index].Header(), head)
+func (d *Downloader) insertChain(blocks types.Blocks) error {
+	for _, b := range blocks {
+	retry:
+		if index, err := d.blockchain.InsertChain(types.Blocks{b}); err != nil {
+			if err == consensus.ErrMissVerification {
+				if d.doubleVerifyFn != nil {
+					nb, is, err := d.doubleVerifyFn(b)
+					if err != nil {
+						return err
+					}
+					if is {
+						log.Info("broadcast new block with verification", "number", b.NumberU64(), "hash", common.BytesToHash(nb.Header().Verification).Hex())
+						go d.broadcastBlock(nb, true)
+						b = nb
+						goto retry
+					}
 				}
 			}
-		} else {
-			// The InsertChain method in blockchain.go will sometimes return an out-of-bounds index,
-			// when it needs to preprocess blocks to import a sidechain.
-			// The importer will put together a new list of blocks to import, which is a superset
-			// of the blocks delivered from the downloader, and the indexing will be off.
-			log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
+			if index != 1 {
+				log.Debug("Downloaded item processing failed", "number", b.NumberU64(), "hash", b.Hash(), "err", err)
+
+				// In post-merge, notify the engine API of encountered bad chains
+				if d.badBlock != nil {
+					head, _, err := d.skeleton.Bounds()
+					if err != nil {
+						log.Error("Failed to retrieve beacon bounds for bad block reporting", "err", err)
+					} else {
+						d.badBlock(blocks[index].Header(), head)
+					}
+				}
+			} else {
+				// The InsertChain method in blockchain.go will sometimes return an out-of-bounds index,
+				// when it needs to preprocess blocks to import a sidechain.
+				// The importer will put together a new list of blocks to import, which is a superset
+				// of the blocks delivered from the downloader, and the indexing will be off.
+				log.Debug("Downloaded item processing failed on sidechain import", "index", index, "err", err)
+			}
+			return fmt.Errorf("%w: %v", errInvalidChain, err)
 		}
-		return fmt.Errorf("%w: %v", errInvalidChain, err)
 	}
 	return nil
 }
@@ -1814,4 +1874,8 @@ func (d *Downloader) readHeaderRange(last *types.Header, count int) []*types.Hea
 		current = parent
 	}
 	return headers
+}
+
+func (d *Downloader) SetDoubleVerifyHook(fn doubleVerifyFn) {
+	d.doubleVerifyFn = fn
 }

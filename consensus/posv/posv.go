@@ -502,7 +502,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 				if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
 					for _, m2 := range m2s {
 						if m2 == signer {
-							log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
+							log.Info("[PoSV]It's turn to validator block", "number", toSignBlockNumber, "validator", signer)
 							if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
 								log.Error("[PoSV]HookBlockSign", "err", err.Error())
 							}
@@ -604,6 +604,10 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
+	if number == 1 && nextNumber != number {
+		log.Info("[PoSV]First block must be sealed in order")
+		return nil
+	}
 	if nextNumber > number {
 		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}

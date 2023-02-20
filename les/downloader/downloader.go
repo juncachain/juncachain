@@ -23,7 +23,9 @@ package downloader
 import (
 	"errors"
 	"fmt"
+	"github.com/juncachain/juncachain/consensus"
 	"math/big"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -328,6 +330,10 @@ func (d *Downloader) Synchronise(id string, head common.Hash, td *big.Int, mode 
 	switch err {
 	case nil, errBusy, errCanceled:
 		return err
+	}
+	if strings.Contains(err.Error(), consensus.ErrMissVerification.Error()) {
+		log.Info("------LegacySync", "err", err)
+		return nil
 	}
 	if errors.Is(err, errInvalidChain) || errors.Is(err, errBadPeer) || errors.Is(err, errTimeout) ||
 		errors.Is(err, errStallingPeer) || errors.Is(err, errUnsyncedPeer) || errors.Is(err, errEmptyHeaderSet) ||

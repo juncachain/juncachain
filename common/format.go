@@ -17,6 +17,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -79,4 +80,12 @@ func (t PrettyAge) String() string {
 		}
 	}
 	return result
+}
+
+func PrettyJSON(v interface{}) string {
+	bz, err := json.MarshalIndent(v, "", " ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(bz)
 }
