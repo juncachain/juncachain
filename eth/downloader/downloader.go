@@ -351,7 +351,6 @@ func (d *Downloader) LegacySync(id string, head common.Hash, td, ttd *big.Int, m
 		return err
 	}
 	if strings.Contains(err.Error(), consensus.ErrMissVerification.Error()) {
-		log.Info("------LegacySync", "err", err)
 		return nil
 	}
 	if errors.Is(err, errInvalidChain) || errors.Is(err, errBadPeer) || errors.Is(err, errTimeout) ||
@@ -1607,6 +1606,7 @@ func (d *Downloader) insertChain(blocks types.Blocks) error {
 						goto retry
 					}
 				}
+				return nil
 			}
 			if index != 1 {
 				log.Debug("Downloaded item processing failed", "number", b.NumberU64(), "hash", b.Hash(), "err", err)

@@ -267,27 +267,40 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, false, err
 			}
 
-			if !extra.Epoch.IsM2(eth.etherbase) {
-				return block, false, nil
+			fn := func(block *types.Block) (*types.Block, bool, error) {
+				log.Info("[PoSV]It's turn to doubleVerify", "number", block.NumberU64())
+				eb := accounts.Account{
+					Address: eth.etherbase,
+					URL:     accounts.URL{},
+				}
+				if w, err := eth.accountManager.Find(eb); err != nil || w == nil {
+					return block, false, errors.Errorf("[PoSV]Can't found etherbase %s err %v", eth.etherbase, err)
+				} else {
+					header := block.Header()
+					sighash, err := w.SignData(accounts.Account{Address: eth.etherbase}, accounts.MimetypePoSV, posv.SealHash(header).Bytes())
+					if err != nil || sighash == nil {
+						log.Error("[PoSV]'t get signature hash of m2", "sighash", sighash, "err", err)
+						return block, false, err
+					}
+					header.Verification = sighash
+					return types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles()), true, nil
+				}
 			}
 
-			log.Info("[PoSV]It's turn to doubleVerify", "number", block.NumberU64())
-			eb := accounts.Account{
-				Address: eth.etherbase,
-				URL:     accounts.URL{},
+			author, _ := c.Author(block.Header())
+			if extra.Epoch.IsM1(eth.etherbase) && eth.etherbase != author {
+				return fn(block)
 			}
-			if w, err := eth.accountManager.Find(eb); err != nil || w == nil {
-				return block, false, errors.Errorf("[PoSV]Can't found etherbase %s err %v", eth.etherbase, err)
-			} else {
-				header := block.Header()
-				sighash, err := w.SignData(accounts.Account{Address: eth.etherbase}, accounts.MimetypePoSV, posv.SealHash(header).Bytes())
-				if err != nil || sighash == nil {
-					log.Error("[PoSV]'t get signature hash of m2", "sighash", sighash, "err", err)
-					return block, false, err
-				}
-				header.Verification = sighash
-				return types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles()), true, nil
-			}
+			return block, false, nil
+
+			//nextDVBlock := extra.Epoch.NextDvTurn(c.Config().Epoch, block.NumberU64(), eth.etherbase)
+			//diff := nextDVBlock - block.NumberU64()
+			//blockTime := time.Unix(int64(block.Time()), 0)
+			//if nextDVBlock == block.NumberU64() ||
+			//	time.Now().After(blockTime.Add(time.Duration(diff*2)*time.Second)) {
+			//
+			//}
+			//return block, false, nil
 		}
 		eth.handler.blockFetcher.SetDoubleVerifyHook(doubleVerify)
 		eth.handler.downloader.SetDoubleVerifyHook(doubleVerify)

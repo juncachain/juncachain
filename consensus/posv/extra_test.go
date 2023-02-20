@@ -67,7 +67,7 @@ func TestM1(t *testing.T) {
 	})
 
 	for i := 1; i <= 20; i++ {
-		m1 := epoch.M1(9, uint64(i))
+		m1 := epoch.NextM1(9, uint64(i))
 		fmt.Println(i, " ", m1)
 	}
 }

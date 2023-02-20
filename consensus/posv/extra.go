@@ -104,9 +104,27 @@ func (e *Epoch) M1(epochLength uint64, number uint64) common.Address {
 	return e.M1s[index].Address
 }
 
+func (e *Epoch) NextM1(epochLength uint64, number uint64) common.Address {
+	if len(e.M1s) == 0 {
+		return common.Address{}
+	}
+	mod := number % epochLength
+	index := int(mod) % len(e.M1s)
+	return e.M1s[index].Address
+}
+
 func (e *Epoch) NextTurn(epochLength uint64, number uint64, m1 common.Address) uint64 {
 	for i := number; i < number+epochLength; i++ {
 		if e.M1(epochLength, i) == m1 {
+			return i
+		}
+	}
+	return number + epochLength
+}
+
+func (e *Epoch) NextDvTurn(epochLength uint64, number uint64, m1 common.Address) uint64 {
+	for i := number; i < number+epochLength; i++ {
+		if e.NextM1(epochLength, i) == m1 {
 			return i
 		}
 	}
