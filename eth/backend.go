@@ -451,7 +451,37 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
-			rewardM1 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM1Percent))
+			calcRewards := func(cfg *params.PoSVConfig, number uint64) *big.Int {
+				epochPerYear := 3600 * 24 * 365 / cfg.Period / cfg.Epoch
+				currentEpoch := (number - 1) / cfg.Epoch
+				var minted = new(big.Int)
+				var mintThisEpoch = cfg.Reward
+				for i := uint64(0); i < currentEpoch/epochPerYear; i++ {
+					mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(epochPerYear)))
+					minted = minted.Add(minted, mintedThisYear)
+
+					mintThisEpoch = new(big.Int).Mul(mintThisEpoch, big.NewInt(3))
+					mintThisEpoch = new(big.Int).Div(mintThisEpoch, big.NewInt(4))
+				}
+				mod := currentEpoch % epochPerYear
+				mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(mod-1)))
+				minted = minted.Add(minted, mintedThisYear)
+				if minted.Cmp(cfg.TotalReward) >= 0 {
+					return new(big.Int)
+				}
+				if new(big.Int).Sub(cfg.TotalReward, minted).Cmp(mintThisEpoch) <= 0 {
+					return new(big.Int).Sub(cfg.TotalReward, minted)
+				}
+				return mintThisEpoch
+			}
+
+			currentEpochRewards := calcRewards(c.Config(), number)
+			if currentEpochRewards.Cmp(big.NewInt(0)) == 0 {
+				return epoch, nil
+			}
+
+			// calc and rewards to m1s
+			rewardM1 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM1Percent))
 			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
 			for _, v := range m1Stat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
@@ -461,7 +491,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["m1"] = m1Stat
 
-			rewardM2 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM2Percent))
+			// calc and rewards to m2s
+			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
 			rewardM2 = new(big.Int).Div(rewardM2, new(big.Int).SetInt64(100))
 			for _, v := range m2Stat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignCount)))
@@ -471,7 +502,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["m2"] = m2Stat
 
-			rewardVoter := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardVoterPercent))
+			// calc and rewards to voters
+			rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
 			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
 			for _, v := range voterStat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
@@ -481,7 +513,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["voters"] = voterStat
 
-			rewardFoundation := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+			// calc and rewards to foundation
+			rewardFoundation := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardFoundationPercent))
 			rewardFoundation = new(big.Int).Div(rewardFoundation, new(big.Int).SetInt64(100))
 			rewards["foundation"] = struct {
 				Address common.Address `json:"address"`
