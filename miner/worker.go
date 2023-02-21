@@ -750,7 +750,9 @@ func (w *worker) resultLoop() {
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 			// Insert the block into the set of pending ones to resultLoop for confirmations
-			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
+			if len(block.Verification()) > 0 {
+				w.unconfirmed.Insert(block.NumberU64(), block.Hash())
+			}
 
 		case <-w.exitCh:
 			return

@@ -286,9 +286,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					return types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles()), true, nil
 				}
 			}
-
-			author, _ := c.Author(block.Header())
-			if extra.Epoch.IsM1(eth.etherbase) && eth.etherbase != author {
+			// the next M1 or after next M1
+			if eth.etherbase == extra.Epoch.M1(c.Config().Epoch, block.NumberU64()+1) ||
+				eth.etherbase == extra.Epoch.M1(c.Config().Epoch, block.NumberU64()+2) {
 				return fn(block)
 			}
 			return block, false, nil

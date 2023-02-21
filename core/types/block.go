@@ -308,6 +308,7 @@ func (b *Block) TxHash() common.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() common.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+func (b *Block) Verification() []byte     { return common.CopyBytes(b.header.Verification) }
 
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {
