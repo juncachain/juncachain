@@ -278,7 +278,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					return block, false, errors.Errorf("[PoSV]Can't found etherbase %s err %v", eth.etherbase, err)
 				} else {
 					header := block.Header()
-					sighash, err := w.SignData(accounts.Account{Address: eth.etherbase}, accounts.MimetypePoSV, posv.SealHash(header).Bytes())
+					sighash, err := w.SignData(accounts.Account{Address: eth.etherbase}, accounts.MimetypePoSV, posv.CliqueRLP(header))
 					if err != nil || sighash == nil {
 						log.Error("[PoSV]'t get signature hash of m2", "sighash", sighash, "err", err)
 						return block, false, err
