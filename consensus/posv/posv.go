@@ -137,6 +137,9 @@ var (
 	// errUnauthorizedSigner is returned if a header is signed by a non-authorized entity.
 	errUnauthorizedSigner = errors.New("unauthorized signer")
 
+	// errUnauthorizedVerifier is returned if a header is verified by a non-authorized entity.
+	errUnauthorizedVerifier = errors.New("unauthorized verifier")
+
 	// errRecentlySigned is returned if a header is signed by an authorized entity
 	// that already signed a header recently, thus is temporarily not allowed to.
 	errRecentlySigned = errors.New("recently signed")
@@ -410,11 +413,25 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	if signer == common.ZeroAddress {
 		return errors.New("nil signer")
 	}
+	// Recover the public key and the Ethereum address
+	pubkey, err := crypto.Ecrecover(SealHash(header).Bytes(), header.Verification)
+	if err != nil {
+		return err
+	}
+	var verifier common.Address
+	copy(verifier[:], crypto.Keccak256(pubkey[1:])[12:])
+	if verifier == common.ZeroAddress {
+		return errors.New("nil verifier")
+	}
+
 	// when sync blocks,cannot get epoch header sometimes
 	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
 	if epoch != nil {
 		if !epoch.IsM1(signer) {
 			return errUnauthorizedSigner
+		}
+		if !epoch.IsM1(verifier) {
+			return errUnauthorizedVerifier
 		}
 	}
 	return nil
