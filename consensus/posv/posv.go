@@ -1,18 +1,17 @@
-// Copyright 2017 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Package posv Copyright (c) 2023 Juncachain
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
+// This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// The go-ethereum library is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 // Package posv implements the Proof-of-Stake Voting consensus engine.
 package posv
@@ -189,9 +188,9 @@ type PoSV struct {
 	once     sync.Once
 	client   *ethclient.Client
 
-	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
-	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
-	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
+	HookCandidates          func(number *big.Int) (MasterNodes, error)
+	HookRandomizeSigners    func(number *big.Int, masternodes []common.Address) ([]common.Address, error)
+	HookPenalty             func(chain consensus.ChainHeaderReader, number uint64) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
 	HookGetBlockSigners     func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error)
 	HookBlockSign           func(signer common.Address, toSign, current *types.Header) error
@@ -369,7 +368,7 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
-		newEpoch, err := c.makeEpoch(chain, header)
+		newEpoch, err := c.makeEpoch(chain, number)
 		if err != nil {
 			return err
 		}
@@ -458,7 +457,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if header.Coinbase == common.ZeroAddress {
 			return nil
 		}
-		newEpoch, err := c.makeEpoch(chain, header)
+		newEpoch, err := c.makeEpoch(chain, number)
 		if err != nil {
 			return err
 		}
@@ -600,7 +599,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
-	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
+	nextNumber := epoch.M1NextTurn(c.config.Epoch, number, signer)
 	if number == 1 && nextNumber != number {
 		log.Info("[PoSV]First block must be sealed in order")
 		return nil
@@ -716,6 +715,7 @@ func encodeSigHeader(w io.Writer, header *types.Header) {
 	}
 }
 
+// LastEpoch return the epoch checkpoint number
 func (c *PoSV) LastEpoch(number uint64) uint64 {
 	if number <= c.config.Epoch {
 		return 0
@@ -725,6 +725,7 @@ func (c *PoSV) LastEpoch(number uint64) uint64 {
 	return number - number%c.config.Epoch
 }
 
+// GetEpoch return the epoch data at checkpoint header,the param epoch must be checkpoint number
 func (c *PoSV) GetEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {
 	return c.getEpoch(chain, epoch)
 }
@@ -747,12 +748,12 @@ func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, header *types.Header) (*Epoch, error) {
-	number := header.Number.Uint64()
+// makeEpoch generate epoch data and return it, number must be checkpoint
+func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epoch, error) {
 	if number%c.config.Epoch != 0 {
 		return nil, errors.New("Not checkpoint")
 	}
-	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(number - 2))
+	ms, err := c.HookCandidates(new(big.Int).SetUint64(number - 1))
 	if err != nil {
 		return nil, err
 	}
@@ -761,7 +762,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, header *types.Header
 
 	epoch := new(Epoch)
 	epoch.Checkpoint = number
-	epoch.Reward = new(big.Int).Set(c.config.Reward)
+	epoch.Reward = c.CalcReward(number)
 	for i, v := range ms {
 		if v.Stake.Cmp(c.config.MinStaked) < 0 {
 			continue
@@ -774,23 +775,19 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, header *types.Header
 		}
 	}
 
-	m2s, err := c.HookValidator(new(big.Int).SetInt64(int64(number)), masterNodes)
+	m2s, err := c.HookRandomizeSigners(new(big.Int).SetInt64(int64(number-1)), masterNodes)
 	if err != nil {
 		return nil, err
 	}
 	epoch.M2s = m2s
 
-	newEpoch, err := c.penalty(chain, header, epoch)
+	newEpoch, err := c.penalty(chain, number, epoch)
 	if err != nil {
 		return nil, err
 	}
 
 	c.epochs.Add(newEpoch, newEpoch)
 	return newEpoch, nil
-}
-
-func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
-	c.epochs.Add(epoch, extra)
 }
 
 func (c *PoSV) Config() *params.PoSVConfig {
@@ -844,10 +841,11 @@ func (c *PoSV) lastSignedBlock(chain consensus.ChainHeaderReader, number uint64,
 	return nil
 }
 
-func (c *PoSV) penalty(chain consensus.ChainHeaderReader, header *types.Header, epoch *Epoch) (*Epoch, error) {
+// penalty penaltyHook , update epoch data and return it
+func (c *PoSV) penalty(chain consensus.ChainHeaderReader, number uint64, epoch *Epoch) (*Epoch, error) {
 	if c.HookPenalty != nil {
-		log.Info("[PoSV]HookPenalty", "number", header.Number.Uint64())
-		penaltys, err := c.HookPenalty(chain, header)
+		log.Info("[PoSV]HookPenalty", "number", number)
+		penaltys, err := c.HookPenalty(chain, number)
 		if err != nil {
 			return epoch, err
 		}
@@ -887,4 +885,29 @@ func (c *PoSV) penalty(chain consensus.ChainHeaderReader, header *types.Header, 
 		}
 	}
 	return epoch, nil
+}
+
+// CalcReward return reward of current epoch
+func (c *PoSV) CalcReward(number uint64) *big.Int {
+	epochPerYear := 3600 * 24 * 365 / c.config.Period / c.config.Epoch
+	currentEpoch := (number - 1) / c.config.Epoch
+	var minted = new(big.Int)
+	var mintThisEpoch = c.config.Reward
+	for i := uint64(0); i < currentEpoch/epochPerYear; i++ {
+		mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(epochPerYear)))
+		minted = minted.Add(minted, mintedThisYear)
+
+		mintThisEpoch = new(big.Int).Mul(mintThisEpoch, big.NewInt(3))
+		mintThisEpoch = new(big.Int).Div(mintThisEpoch, big.NewInt(4))
+	}
+	mod := currentEpoch % epochPerYear
+	mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(mod-1)))
+	minted = minted.Add(minted, mintedThisYear)
+	if minted.Cmp(c.config.TotalReward) >= 0 {
+		return new(big.Int)
+	}
+	if new(big.Int).Sub(c.config.TotalReward, minted).Cmp(mintThisEpoch) <= 0 {
+		return new(big.Int).Sub(c.config.TotalReward, minted)
+	}
+	return mintThisEpoch
 }

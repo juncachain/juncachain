@@ -21,6 +21,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/common/hexutil"
@@ -57,13 +65,6 @@ import (
 	"github.com/juncachain/juncachain/rpc"
 	"github.com/pkg/errors"
 	"github.com/umpc/go-sortedmap"
-	"math/big"
-	"runtime"
-	"sort"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -285,27 +286,34 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return false
 		}
 
-		c.HookValidator = func(number *big.Int, masters []common.Address) ([]common.Address, error) {
-			start := time.Now()
+		c.HookRandomizeSigners = func(number *big.Int, masternodes []common.Address) ([]common.Address, error) {
+			if len(masternodes) == 0 {
+				return nil, nil
+			}
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
 			}
-			validators, err := contracts.GetValidators(client, masters)
-			if err != nil {
-				return nil, err
+
+			var randomizes []int64
+			for _, addr := range masternodes {
+				random, err := contracts.GetRandomizeFromContract(client, addr, number)
+				if err != nil {
+					return nil, err
+				}
+				randomizes = append(randomizes, random)
 			}
-			log.Debug("Time Calculated HookValidator ", "block", number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
-			return validators, nil
+			// Get randomize m2 list.
+			return contracts.GenerateM2FromRandomize(randomizes, masternodes)
 		}
 
-		c.HookGetMasterNodes = func(number *big.Int) (posv.MasterNodes, error) {
+		c.HookCandidates = func(number *big.Int) (posv.MasterNodes, error) {
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
 			}
 
-			candidates, err := contracts.GetCandidates(client, number)
+			candidates, err := contracts.GetCandidatesFromContract(client, number)
 			if err != nil {
 				return nil, err
 			}
@@ -341,11 +349,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			for i := begin; i <= end; i++ {
 				hd := chain.GetHeaderByNumber(i)
 				if hd != nil {
-					signers, err := contracts.GetSignersFromContract(stateBlock, hd.Hash())
-					if err != nil {
-						log.Crit("HookQueryBlockSigners", "err", err)
-					}
-					for _, v := range signers {
+					for _, v := range contracts.GetBlockSignersFromState(stateBlock, hd.Hash()) {
 						signCount[v] = signCount[v] + 1
 					}
 				}
@@ -451,31 +455,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
-			calcRewards := func(cfg *params.PoSVConfig, number uint64) *big.Int {
-				epochPerYear := 3600 * 24 * 365 / cfg.Period / cfg.Epoch
-				currentEpoch := (number - 1) / cfg.Epoch
-				var minted = new(big.Int)
-				var mintThisEpoch = cfg.Reward
-				for i := uint64(0); i < currentEpoch/epochPerYear; i++ {
-					mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(epochPerYear)))
-					minted = minted.Add(minted, mintedThisYear)
-
-					mintThisEpoch = new(big.Int).Mul(mintThisEpoch, big.NewInt(3))
-					mintThisEpoch = new(big.Int).Div(mintThisEpoch, big.NewInt(4))
-				}
-				mod := currentEpoch % epochPerYear
-				mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(mod-1)))
-				minted = minted.Add(minted, mintedThisYear)
-				if minted.Cmp(cfg.TotalReward) >= 0 {
-					return new(big.Int)
-				}
-				if new(big.Int).Sub(cfg.TotalReward, minted).Cmp(mintThisEpoch) <= 0 {
-					return new(big.Int).Sub(cfg.TotalReward, minted)
-				}
-				return mintThisEpoch
-			}
-
-			currentEpochRewards := calcRewards(c.Config(), number)
+			currentEpochRewards := c.CalcReward(number)
 			if currentEpochRewards.Cmp(big.NewInt(0)) == 0 {
 				return epoch, nil
 			}
@@ -535,8 +515,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return epoch, nil
 		}
 
-		c.HookPenalty = func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
-			number := header.Number.Uint64()
+		c.HookPenalty = func(chain consensus.ChainHeaderReader, number uint64) ([]common.Address, error) {
 			if number == 0 || number%c.Config().Epoch != 0 {
 				return nil, nil
 			}

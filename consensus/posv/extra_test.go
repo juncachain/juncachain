@@ -1,12 +1,27 @@
+// Package posv Copyright (c) 2023 Juncachain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
+
 package posv
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/juncachain/juncachain/common"
-	"github.com/juncachain/juncachain/common/hexutil"
 	"math/big"
 	"testing"
+
+	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/hexutil"
 )
 
 func TestEncodeDecode(t *testing.T) {
@@ -68,7 +83,9 @@ func TestM1(t *testing.T) {
 
 	for i := 1; i <= 20; i++ {
 		m1 := epoch.M1(9, uint64(i))
-		fmt.Println(i, " ", m1)
+		if m1 != epoch.M1s[(i-1)%epoch.M1Length()].Address {
+			t.Fatal("not in order")
+		}
 	}
 }
 
@@ -78,13 +95,17 @@ func TestM2(t *testing.T) {
 	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(1)))
 	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(2)))
 	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(3)))
-	epoch.M2s = append(epoch.M2s, common.BigToAddress(new(big.Int).SetInt64(4)))
 
 	for i := 1; i <= 20; i++ {
-		var str = fmt.Sprintf("block:%d", i)
-		for _, v := range epoch.M2(9, uint64(i)) {
-			str = str + fmt.Sprintf(" %s ", v.Hex())
+		m2s := epoch.M2(9, uint64(i))
+		if len(m2s) != 2 {
+			t.Fatal("got no m2")
 		}
-		fmt.Println(str)
+		if m2s[0] != epoch.M2s[(i)%epoch.M2Length()] {
+			t.Fatal("The first M2 not in order")
+		}
+		if m2s[1] != epoch.M2s[(i+1)%epoch.M2Length()] {
+			t.Fatal("The second M2 not in order")
+		}
 	}
 }
