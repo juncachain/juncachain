@@ -117,13 +117,13 @@ func (w *wizard) makeGenesis() {
 	case choice == "" || choice == "3":
 		// In the case of posv, configure the consensus parameters
 		genesis.Difficulty = big.NewInt(1)
-		base := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 		genesis.Config.Posv = &params.PoSVConfig{
-			Period:     2,
-			Epoch:      900,
-			MinStaked:  new(big.Int).Mul(big.NewInt(50000), base),
-			Reward:     new(big.Int).Mul(big.NewInt(250), base),
-			Foundation: common.Address{},
+			Period:      2,
+			Epoch:       900,
+			MinStaked:   new(big.Int).Mul(big.NewInt(50000), big.NewInt(params.Ether)),
+			Reward:      new(big.Int).Mul(big.NewInt(1500), big.NewInt(params.Ether)),
+			TotalReward: new(big.Int).Mul(big.NewInt(100000000), big.NewInt(params.Ether)),
+			Foundation:  common.Address{},
 		}
 		fmt.Println()
 		fmt.Println("How many seconds should blocks take? (default = 2)")
@@ -134,12 +134,16 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Posv.Epoch = uint64(w.readDefaultInt(900))
 
 		fmt.Println()
-		fmt.Println("How many min tokens should be staked? (default = 50000)")
-		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), base)
+		fmt.Println("How many min tokens should be staked? (default = 50,000)")
+		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), big.NewInt(params.Ether))
 
 		fmt.Println()
-		fmt.Println("How many Ethers should be rewarded to masternode per epoch? (default = 250)")
-		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(250))), base)
+		fmt.Println("How many Ethers should be rewarded to masternode first epoch? (default = 1,500)")
+		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(1500))), big.NewInt(params.Ether))
+
+		fmt.Println()
+		fmt.Println("How many total Ethers should be rewarded to masternode? (default = 100,000,000)")
+		genesis.Config.Posv.TotalReward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(100000000))), big.NewInt(params.Ether))
 
 		fmt.Println()
 		fmt.Println("What is foundation wallet address? (default = 0x0000000000004a756E6361466F75646174696f6E)")

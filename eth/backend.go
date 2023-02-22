@@ -21,6 +21,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/common/hexutil"
@@ -57,13 +65,6 @@ import (
 	"github.com/juncachain/juncachain/rpc"
 	"github.com/pkg/errors"
 	"github.com/umpc/go-sortedmap"
-	"math/big"
-	"runtime"
-	"sort"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -330,27 +331,34 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return false
 		}
 
-		c.HookValidator = func(number *big.Int, masters []common.Address) ([]common.Address, error) {
-			start := time.Now()
+		c.HookRandomizeSigners = func(number *big.Int, masternodes []common.Address) ([]common.Address, error) {
+			if len(masternodes) == 0 {
+				return nil, nil
+			}
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
 			}
-			validators, err := contracts.GetValidators(client, masters)
-			if err != nil {
-				return nil, err
+
+			var randomizes []int64
+			for _, addr := range masternodes {
+				random, err := contracts.GetRandomizeFromContract(client, addr, number)
+				if err != nil {
+					return nil, err
+				}
+				randomizes = append(randomizes, random)
 			}
-			log.Debug("Time Calculated HookValidator ", "block", number.Uint64(), "time", common.PrettyDuration(time.Since(start)))
-			return validators, nil
+			// Get randomize m2 list.
+			return contracts.GenerateM2FromRandomize(randomizes, masternodes)
 		}
 
-		c.HookGetMasterNodes = func(number *big.Int) (posv.MasterNodes, error) {
+		c.HookCandidates = func(number *big.Int) (posv.MasterNodes, error) {
 			client, err := eth.GetClient()
 			if err != nil {
 				return nil, err
 			}
 
-			candidates, err := contracts.GetCandidates(client, number)
+			candidates, err := contracts.GetCandidatesFromContract(client, number)
 			if err != nil {
 				return nil, err
 			}
@@ -386,11 +394,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			for i := begin; i <= end; i++ {
 				hd := chain.GetHeaderByNumber(i)
 				if hd != nil {
-					signers, err := contracts.GetSignersFromContract(stateBlock, hd.Hash())
-					if err != nil {
-						log.Crit("HookQueryBlockSigners", "err", err)
-					}
-					for _, v := range signers {
+					for _, v := range contracts.GetBlockSignersFromState(stateBlock, hd.Hash()) {
 						signCount[v] = signCount[v] + 1
 					}
 				}
@@ -496,7 +500,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
-			rewardM1 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM1Percent))
+			currentEpochRewards := c.CalcReward(number)
+			if currentEpochRewards.Cmp(big.NewInt(0)) == 0 {
+				return epoch, nil
+			}
+
+			// calc and rewards to m1s
+			rewardM1 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM1Percent))
 			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
 			for _, v := range m1Stat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
@@ -506,7 +516,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["m1"] = m1Stat
 
-			rewardM2 := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardM2Percent))
+			// calc and rewards to m2s
+			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
 			rewardM2 = new(big.Int).Div(rewardM2, new(big.Int).SetInt64(100))
 			for _, v := range m2Stat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignCount)))
@@ -516,7 +527,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["m2"] = m2Stat
 
-			rewardVoter := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardVoterPercent))
+			// calc and rewards to voters
+			rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
 			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
 			for _, v := range voterStat {
 				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
@@ -526,7 +538,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 			rewards["voters"] = voterStat
 
-			rewardFoundation := new(big.Int).Mul(c.Config().Reward, new(big.Int).SetInt64(common.RewardFoundationPercent))
+			// calc and rewards to foundation
+			rewardFoundation := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardFoundationPercent))
 			rewardFoundation = new(big.Int).Div(rewardFoundation, new(big.Int).SetInt64(100))
 			rewards["foundation"] = struct {
 				Address common.Address `json:"address"`
@@ -547,8 +560,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return epoch, nil
 		}
 
-		c.HookPenalty = func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error) {
-			number := header.Number.Uint64()
+		c.HookPenalty = func(chain consensus.ChainHeaderReader, number uint64) ([]common.Address, error) {
 			if number == 0 || number%c.Config().Epoch != 0 {
 				return nil, nil
 			}

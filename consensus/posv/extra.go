@@ -1,3 +1,18 @@
+// Package posv Copyright (c) 2023 Juncachain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
+
 package posv
 
 import (
@@ -92,6 +107,7 @@ func (e *Epoch) IsM1(address common.Address) bool {
 	return false
 }
 
+// M1 return the block sealer in order
 func (e *Epoch) M1(epochLength uint64, number uint64) common.Address {
 	if len(e.M1s) == 0 {
 		return common.Address{}
@@ -113,7 +129,8 @@ func (e *Epoch) NextM1(epochLength uint64, number uint64) common.Address {
 	return e.M1s[index].Address
 }
 
-func (e *Epoch) NextTurn(epochLength uint64, number uint64, m1 common.Address) uint64 {
+// M1NextTurn return the next block should be seal by m1
+func (e *Epoch) M1NextTurn(epochLength uint64, number uint64, m1 common.Address) uint64 {
 	for i := number; i < number+epochLength; i++ {
 		if e.M1(epochLength, i) == m1 {
 			return i
@@ -152,6 +169,7 @@ func (e *Epoch) M1Length() int {
 	return len(e.M1s)
 }
 
+// M2 return the block signers in order
 func (e *Epoch) M2(epochLength uint64, number uint64) []common.Address {
 	if len(e.M2s) == 0 {
 		return nil

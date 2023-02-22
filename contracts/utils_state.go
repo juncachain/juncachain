@@ -1,10 +1,26 @@
+// Copyright (c) 2018 Juncachain
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
+
 package contracts
 
 import (
+	"math/big"
+
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/crypto"
-	"math/big"
 )
 
 func GetLocSimpleVariable(slot uint64) common.Hash {
@@ -44,7 +60,7 @@ var (
 	}
 )
 
-func GetSignersFromState(statedb *state.StateDB, blockHash common.Hash) []common.Address {
+func GetBlockSignersFromState(statedb *state.StateDB, blockHash common.Hash) []common.Address {
 	slot := slotBlockSignerMapping["blockSigners"]
 	keys := []common.Hash{}
 	keyArrSlot := GetLocMappingAtKey(blockHash, slot)
