@@ -31,6 +31,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/hexutil"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/misc"
 	"github.com/juncachain/juncachain/core/state"
@@ -63,8 +64,8 @@ const (
 
 // PoSV Proof-of-Stake Voting protocol constants.
 var (
-	//nonceAuthVote = hexutil.MustDecode("0xffffffffffffffff") // Magic nonce number to vote on adding a new signer
-	//nonceDropVote = hexutil.MustDecode("0x0000000000000000") // Magic nonce number to vote on removing a signer.
+	nonceCheckpoint = hexutil.MustDecode("0xffffffffffffffff")
+	nonceDefault    = hexutil.MustDecode("0x0000000000000000")
 
 	uncleHash = types.CalcUncleHash(nil) // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW.
 
@@ -85,13 +86,9 @@ var (
 	// block has a beneficiary set to non-zeroes.
 	errInvalidCheckpointBeneficiary = errors.New("beneficiary in checkpoint block non-zero")
 
-	// errInvalidVote is returned if a nonce value is something else that the two
+	// errInvalidNonce is returned if a nonce value is something else that the two
 	// allowed constants of 0x00..0 or 0xff..f.
-	errInvalidVote = errors.New("vote nonce not 0x00..0 or 0xff..f")
-
-	// errInvalidCheckpointVote is returned if a checkpoint/epoch transition block
-	// has a vote nonce set to non-zeroes.
-	errInvalidCheckpointVote = errors.New("vote nonce in checkpoint block non-zero")
+	errInvalidNonce = errors.New("nonce not 0x00..0 or 0xff..f")
 
 	// errMissingVanity is returned if a block's extra-data section is shorter than
 	// 32 bytes, which is required to store the signer vanity.
@@ -129,10 +126,6 @@ var (
 	// errInvalidTimestamp is returned if the timestamp of a block is lower than
 	// the previous block's timestamp + the minimum block period.
 	errInvalidTimestamp = errors.New("invalid timestamp")
-
-	// errInvalidVotingChain is returned if an authorization list is attempted to
-	// be modified via out-of-range or non-contiguous headers.
-	errInvalidVotingChain = errors.New("invalid voting chain")
 
 	// errUnauthorizedSigner is returned if a header is signed by a non-authorized entity.
 	errUnauthorizedSigner = errors.New("unauthorized signer")
@@ -261,23 +254,24 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 		return errUnknownBlock
 	}
 	number := header.Number.Uint64()
+	checkpoint := (number % c.config.Epoch) == 0
 
 	// Don't waste time checking blocks from the future
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
 	}
-	// Checkpoint blocks need to enforce zero beneficiary
-	checkpoint := (number % c.config.Epoch) == 0
-	//if checkpoint && header.Coinbase != (common.Address{}) {
-	//	return errInvalidCheckpointBeneficiary
-	//}
-	// Nonces must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-	//if !bytes.Equal(header.Nonce[:], nonceAuthVote) && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-	//	return errInvalidVote
-	//}
-	//if checkpoint && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-	//	return errInvalidCheckpointVote
-	//}
+	// Coinbase must be M1
+	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
+	if epoch != nil && !epoch.IsM1(header.Coinbase) {
+		return errInvalidCheckpointBeneficiary
+	}
+	// Nonces must be 0x00..0 , zeroes enforced on checkpoints
+	if !checkpoint && !bytes.Equal(header.Nonce[:], nonceDefault) {
+		return errInvalidNonce
+	}
+	if checkpoint && !bytes.Equal(header.Nonce[:], nonceCheckpoint) {
+		return errInvalidNonce
+	}
 	// Check that the extra-data contains both the vanity and signature
 	if len(header.Extra) < extraVanity {
 		return errMissingVanity
@@ -408,10 +402,22 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 		return errors.New("nil signer")
 	}
 	// when sync blocks,cannot get epoch header sometimes
-	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
-	if epoch != nil {
+	if epoch, _ := c.getEpoch(chain, c.LastEpoch(number)); epoch != nil {
+		// Signer must be M1
 		if !epoch.IsM1(signer) {
 			return errUnauthorizedSigner
+		}
+
+		// Signer cannot sign two consecutive blocks unless
+		// it's your turn or the block is the first in an epoch
+		if epoch.M1(c.config.Epoch, number) != signer && number%c.config.Epoch != 1 {
+			if parent := chain.GetHeaderByNumber(number - 1); parent != nil {
+				if lastSigner, err := ecrecover(parent, c.signatures); err != nil {
+					return err
+				} else if lastSigner == signer {
+					return errRecentlySigned
+				}
+			}
 		}
 	}
 	return nil
@@ -425,6 +431,10 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
+	checkpoint := number%c.config.Epoch == 0
+	if checkpoint {
+		copy(header.Nonce[:], nonceCheckpoint)
+	}
 
 	epoch, err := c.getEpoch(chain, c.LastEpoch(number))
 	if err != nil {
@@ -436,7 +446,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	signer := c.signer
 	c.lock.RUnlock()
 
-	//if number%c.config.Epoch != 0 {
+	// Set the coinbase in order
 	header.Coinbase = epoch.M1(c.config.Epoch, number)
 
 	// Set the correct difficulty
@@ -445,7 +455,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	} else {
 		header.Difficulty = new(big.Int).Set(diffNoTurn)
 	}
-	//}
 
 	// Ensure the extra data has all its components
 	if len(header.Extra) < extraVanity {
@@ -490,18 +499,15 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		}
 	}
 
-	if c.HookBlockSign != nil && epoch.IsM2(signer) {
-		if number > common.EpochBlockSignWiggle {
-			toSignBlockNumber := number - common.EpochBlockSignWiggle
-			toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber)
-			if toSignBlock != nil {
-				if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
-					for _, m2 := range m2s {
-						if m2 == signer {
-							log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
-							if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
-								log.Error("[PoSV]HookBlockSign", "err", err.Error())
-							}
+	if c.HookBlockSign != nil && epoch.IsM2(signer) && number > common.EpochBlockSignWiggle {
+		toSignBlockNumber := number - common.EpochBlockSignWiggle
+		if toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber); toSignBlock != nil {
+			if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
+				for _, m2 := range m2s {
+					if m2 == signer {
+						log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
+						if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
+							log.Error("[PoSV]HookBlockSign", "err", err.Error())
 						}
 					}
 				}
