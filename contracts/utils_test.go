@@ -157,7 +157,7 @@ func TestGenM2FromRandomize(t *testing.T) {
 		a = append(a, int64(rand.Intn(9999)))
 		masters = append(masters, common.BigToAddress(new(big.Int).SetInt64(int64(i))))
 	}
-	m2s, err := GenM2FromRandomize(a, masters)
+	m2s, err := GenerateM2FromRandomize(a, masters)
 	t.Log("randomize", m2s, "len", len(m2s))
 	if err != nil {
 		t.Error("Fail to test gen m2 for randomize.", err)

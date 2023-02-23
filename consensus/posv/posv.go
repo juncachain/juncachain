@@ -1,18 +1,17 @@
-// Copyright 2017 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Package posv Copyright (c) 2023 Juncachain
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
+// This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// The go-ethereum library is distributed in the hope that it will be useful,
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 // Package posv implements the Proof-of-Stake Voting consensus engine.
 package posv
@@ -32,6 +31,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/juncachain/juncachain/accounts"
 	"github.com/juncachain/juncachain/common"
+	"github.com/juncachain/juncachain/common/hexutil"
 	"github.com/juncachain/juncachain/consensus"
 	"github.com/juncachain/juncachain/consensus/misc"
 	"github.com/juncachain/juncachain/core/state"
@@ -64,8 +64,8 @@ const (
 
 // PoSV Proof-of-Stake Voting protocol constants.
 var (
-	//nonceAuthVote = hexutil.MustDecode("0xffffffffffffffff") // Magic nonce number to vote on adding a new signer
-	//nonceDropVote = hexutil.MustDecode("0x0000000000000000") // Magic nonce number to vote on removing a signer.
+	nonceCheckpoint = hexutil.MustDecode("0xffffffffffffffff")
+	nonceDefault    = hexutil.MustDecode("0x0000000000000000")
 
 	uncleHash = types.CalcUncleHash(nil) // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW.
 
@@ -86,13 +86,9 @@ var (
 	// block has a beneficiary set to non-zeroes.
 	errInvalidCheckpointBeneficiary = errors.New("beneficiary in checkpoint block non-zero")
 
-	// errInvalidVote is returned if a nonce value is something else that the two
+	// errInvalidNonce is returned if a nonce value is something else that the two
 	// allowed constants of 0x00..0 or 0xff..f.
-	errInvalidVote = errors.New("vote nonce not 0x00..0 or 0xff..f")
-
-	// errInvalidCheckpointVote is returned if a checkpoint/epoch transition block
-	// has a vote nonce set to non-zeroes.
-	errInvalidCheckpointVote = errors.New("vote nonce in checkpoint block non-zero")
+	errInvalidNonce = errors.New("nonce not 0x00..0 or 0xff..f")
 
 	// errMissingVanity is returned if a block's extra-data section is shorter than
 	// 32 bytes, which is required to store the signer vanity.
@@ -130,10 +126,6 @@ var (
 	// errInvalidTimestamp is returned if the timestamp of a block is lower than
 	// the previous block's timestamp + the minimum block period.
 	errInvalidTimestamp = errors.New("invalid timestamp")
-
-	// errInvalidVotingChain is returned if an authorization list is attempted to
-	// be modified via out-of-range or non-contiguous headers.
-	errInvalidVotingChain = errors.New("invalid voting chain")
 
 	// errUnauthorizedSigner is returned if a header is signed by a non-authorized entity.
 	errUnauthorizedSigner = errors.New("unauthorized signer")
@@ -189,9 +181,9 @@ type PoSV struct {
 	once     sync.Once
 	client   *ethclient.Client
 
-	HookGetMasterNodes      func(number *big.Int) (MasterNodes, error)
-	HookValidator           func(number *big.Int, masters []common.Address) ([]common.Address, error)
-	HookPenalty             func(chain consensus.ChainHeaderReader, header *types.Header) ([]common.Address, error)
+	HookCandidates          func(number *big.Int) (MasterNodes, error)
+	HookRandomizeSigners    func(number *big.Int, masternodes []common.Address) ([]common.Address, error)
+	HookPenalty             func(chain consensus.ChainHeaderReader, number uint64) ([]common.Address, error)
 	HookReward              func(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (map[string]interface{}, error)
 	HookGetBlockSigners     func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[common.Address]int, error)
 	HookBlockSign           func(signer common.Address, toSign, current *types.Header) error
@@ -229,7 +221,6 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Trace("[PoSV]VerifyHeader", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -237,7 +228,6 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Trace("[PoSV]VerifyHeaders", "headers", len(headers), "latest", headers[len(headers)-1].Number)
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -264,23 +254,24 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 		return errUnknownBlock
 	}
 	number := header.Number.Uint64()
+	checkpoint := (number % c.config.Epoch) == 0
 
 	// Don't waste time checking blocks from the future
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
 	}
-	// Checkpoint blocks need to enforce zero beneficiary
-	checkpoint := (number % c.config.Epoch) == 0
-	//if checkpoint && header.Coinbase != (common.Address{}) {
-	//	return errInvalidCheckpointBeneficiary
-	//}
-	// Nonces must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-	//if !bytes.Equal(header.Nonce[:], nonceAuthVote) && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-	//	return errInvalidVote
-	//}
-	//if checkpoint && !bytes.Equal(header.Nonce[:], nonceDropVote) {
-	//	return errInvalidCheckpointVote
-	//}
+	// Coinbase must be M1
+	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
+	if epoch != nil && !epoch.IsM1(header.Coinbase) {
+		return errInvalidCheckpointBeneficiary
+	}
+	// Nonces must be 0x00..0 , zeroes enforced on checkpoints
+	if !checkpoint && !bytes.Equal(header.Nonce[:], nonceDefault) {
+		return errInvalidNonce
+	}
+	if checkpoint && !bytes.Equal(header.Nonce[:], nonceCheckpoint) {
+		return errInvalidNonce
+	}
 	// Check that the extra-data contains both the vanity and signature
 	if len(header.Extra) < extraVanity {
 		return errMissingVanity
@@ -371,6 +362,13 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
+		newEpoch, err := c.makeEpoch(chain, number)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
+			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), newEpoch.String())
+		}
 	}
 	// All basic checks passed, verify the seal and return
 	return c.verifySeal(chain, header, parents)
@@ -404,10 +402,22 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 		return errors.New("nil signer")
 	}
 	// when sync blocks,cannot get epoch header sometimes
-	epoch, _ := c.getEpoch(chain, c.LastEpoch(number))
-	if epoch != nil {
+	if epoch, _ := c.getEpoch(chain, c.LastEpoch(number)); epoch != nil {
+		// Signer must be M1
 		if !epoch.IsM1(signer) {
 			return errUnauthorizedSigner
+		}
+
+		// Signer cannot sign two consecutive blocks unless
+		// it's your turn or the block is the first in an epoch
+		if epoch.M1(c.config.Epoch, number) != signer && number%c.config.Epoch != 1 {
+			if parent := chain.GetHeaderByNumber(number - 1); parent != nil {
+				if lastSigner, err := ecrecover(parent, c.signatures); err != nil {
+					return err
+				} else if lastSigner == signer {
+					return errRecentlySigned
+				}
+			}
 		}
 	}
 	return nil
@@ -416,13 +426,15 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Trace("[PoSV]Prepare", "number", header.Number, "coinbase", header.Coinbase.Hex(), "basefee", header.BaseFee)
-
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
+	checkpoint := number%c.config.Epoch == 0
+	if checkpoint {
+		copy(header.Nonce[:], nonceCheckpoint)
+	}
 
 	epoch, err := c.getEpoch(chain, c.LastEpoch(number))
 	if err != nil {
@@ -434,7 +446,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	signer := c.signer
 	c.lock.RUnlock()
 
-	//if number%c.config.Epoch != 0 {
+	// Set the coinbase in order
 	header.Coinbase = epoch.M1(c.config.Epoch, number)
 
 	// Set the correct difficulty
@@ -443,7 +455,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	} else {
 		header.Difficulty = new(big.Int).Set(diffNoTurn)
 	}
-	//}
 
 	// Ensure the extra data has all its components
 	if len(header.Extra) < extraVanity {
@@ -455,52 +466,11 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		if header.Coinbase == common.ZeroAddress {
 			return nil
 		}
-		nextEpoch, err := c.makeEpoch(number)
+		newEpoch, err := c.makeEpoch(chain, number)
 		if err != nil {
 			return err
 		}
-		if c.HookPenalty != nil {
-			log.Info("[PoSV]HookPenalty", "number", header.Number)
-			penaltys, err := c.HookPenalty(chain, header)
-			if err != nil {
-				log.Error("[PoSV]HookPenalty", "err", err)
-			}
-			if len(penaltys) > 0 {
-				nextEpoch.Penalties = make([]common.Address, len(penaltys))
-				for i, v := range penaltys {
-					nextEpoch.Penalties[i] = v
-					log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
-				}
-			}
-			penalized := func(address common.Address) bool {
-				for _, v := range penaltys {
-					if v == address {
-						return true
-					}
-				}
-				return false
-			}
-
-			if len(penaltys) > 0 {
-				var m1s MasterNodes
-				var m2s []common.Address
-				for _, v := range nextEpoch.M1s {
-					if !penalized(v.Address) {
-						m1s = append(m1s, v)
-					}
-				}
-				for _, v := range nextEpoch.M2s {
-					if !penalized(v) {
-						m2s = append(m2s, v)
-					}
-				}
-				if len(m1s) > 0 && len(m2s) > 0 {
-					nextEpoch.M1s = m1s
-					nextEpoch.M2s = m2s
-				}
-			}
-		}
-		header.Extra = append(header.Extra, nextEpoch.ToBytes()...)
+		header.Extra = append(header.Extra, newEpoch.ToBytes()...)
 	}
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
@@ -529,18 +499,15 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		}
 	}
 
-	if c.HookBlockSign != nil && epoch.IsM2(signer) {
-		if number > common.EpochBlockSignWiggle {
-			toSignBlockNumber := number - common.EpochBlockSignWiggle
-			toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber)
-			if toSignBlock != nil {
-				if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
-					for _, m2 := range m2s {
-						if m2 == signer {
-							log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
-							if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
-								log.Error("[PoSV]HookBlockSign", "err", err.Error())
-							}
+	if c.HookBlockSign != nil && epoch.IsM2(signer) && number > common.EpochBlockSignWiggle {
+		toSignBlockNumber := number - common.EpochBlockSignWiggle
+		if toSignBlock := chain.GetHeaderByNumber(toSignBlockNumber); toSignBlock != nil {
+			if m2s := epoch.M2(c.config.Epoch, toSignBlockNumber); len(m2s) > 0 {
+				for _, m2 := range m2s {
+					if m2 == signer {
+						log.Info("[PoSV]Is turn to validator block", "number", toSignBlockNumber, "validator", signer)
+						if err := c.HookBlockSign(signer, toSignBlock, header); err != nil {
+							log.Error("[PoSV]HookBlockSign", "err", err.Error())
 						}
 					}
 				}
@@ -554,7 +521,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Trace("[PoSV]Finalize", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
 		log.Info("[PoSV]HookReward", "number", header.Number)
 		rewards, err := c.HookReward(chain, state, header)
@@ -578,7 +544,6 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Trace("[PoSV]FinalizeAndAssemble", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -599,7 +564,6 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Trace("[PoSV]Seal", "number", block.Number().Int64(), "coinbase", block.Coinbase().Hex(), "basefee", block.BaseFee())
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -622,7 +586,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return err
 	}
 	if !epoch.IsM1(signer) {
-		return errors.Errorf("coinbase:%s is not M1,number:%d", signer.Hex(), number)
+		return errors.Errorf("Etherbase %s is not M1 at %d", signer.Hex(), number)
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -633,16 +597,21 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 			if pSigner, err := c.Author(parent); err != nil {
 				return err
 			} else if pSigner == signer {
-				return errors.New("Signed recently, must wait for others")
+				log.Info("[PoSV]Signed recently, must wait for others", "m1 length", epoch.M1Length())
+				return nil
 			}
 		}
 	}
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
-	nextNumber := epoch.NextTurn(c.config.Epoch, number, signer)
+	nextNumber := epoch.M1NextTurn(c.config.Epoch, number, signer)
+	if number == 1 && nextNumber != number {
+		log.Info("[PoSV]First block must be sealed in order")
+		return nil
+	}
 	if nextNumber > number {
-		delay = delay + time.Duration((nextNumber-number-1)*c.config.Period)*time.Second + wiggleTime
+		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}
 
 	// Sign all the things!
@@ -676,7 +645,6 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	log.Trace("[PoSV]CalcDifficulty", "time", time, "parent", parent)
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
@@ -689,7 +657,6 @@ func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *PoSV) SealHash(header *types.Header) common.Hash {
-	log.Trace("[PoSV]SealHash", "number", header.Number, "coinbase", header.Coinbase.Hex())
 	return SealHash(header)
 }
 
@@ -702,7 +669,7 @@ func (c *PoSV) Close() error {
 // controlling the signer voting.
 func (c *PoSV) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 	return []rpc.API{{
-		Namespace: "PoSV",
+		Namespace: "posv",
 		Service:   &API{chain: chain, posv: c},
 	}}
 }
@@ -754,6 +721,7 @@ func encodeSigHeader(w io.Writer, header *types.Header) {
 	}
 }
 
+// LastEpoch return the epoch checkpoint number
 func (c *PoSV) LastEpoch(number uint64) uint64 {
 	if number <= c.config.Epoch {
 		return 0
@@ -763,6 +731,7 @@ func (c *PoSV) LastEpoch(number uint64) uint64 {
 	return number - number%c.config.Epoch
 }
 
+// GetEpoch return the epoch data at checkpoint header,the param epoch must be checkpoint number
 func (c *PoSV) GetEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch, error) {
 	return c.getEpoch(chain, epoch)
 }
@@ -785,11 +754,12 @@ func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, epoch uint64) (*Epoch
 	return nil, errors.Errorf("Not found epoch extra data:%d", epoch)
 }
 
-func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
+// makeEpoch generate epoch data and return it, number must be checkpoint
+func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epoch, error) {
 	if number%c.config.Epoch != 0 {
 		return nil, errors.New("Not checkpoint")
 	}
-	ms, err := c.HookGetMasterNodes(new(big.Int).SetUint64(number - 2))
+	ms, err := c.HookCandidates(new(big.Int).SetUint64(number - 1))
 	if err != nil {
 		return nil, err
 	}
@@ -798,7 +768,7 @@ func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
 
 	epoch := new(Epoch)
 	epoch.Checkpoint = number
-	epoch.Reward = new(big.Int).Set(c.config.Reward)
+	epoch.Reward = c.CalcReward(number)
 	for i, v := range ms {
 		if v.Stake.Cmp(c.config.MinStaked) < 0 {
 			continue
@@ -811,18 +781,19 @@ func (c *PoSV) makeEpoch(number uint64) (*Epoch, error) {
 		}
 	}
 
-	m2s, err := c.HookValidator(new(big.Int).SetInt64(int64(number)), masterNodes)
+	m2s, err := c.HookRandomizeSigners(new(big.Int).SetInt64(int64(number-1)), masterNodes)
 	if err != nil {
 		return nil, err
 	}
 	epoch.M2s = m2s
 
-	c.epochs.Add(epoch, epoch)
-	return epoch, nil
-}
+	newEpoch, err := c.penalty(chain, number, epoch)
+	if err != nil {
+		return nil, err
+	}
 
-func (c *PoSV) SetEpoch(epoch uint64, extra *Extra) {
-	c.epochs.Add(epoch, extra)
+	c.epochs.Add(newEpoch, newEpoch)
+	return newEpoch, nil
 }
 
 func (c *PoSV) Config() *params.PoSVConfig {
@@ -874,4 +845,75 @@ func (c *PoSV) lastSignedBlock(chain consensus.ChainHeaderReader, number uint64,
 		}
 	}
 	return nil
+}
+
+// penalty penaltyHook , update epoch data and return it
+func (c *PoSV) penalty(chain consensus.ChainHeaderReader, number uint64, epoch *Epoch) (*Epoch, error) {
+	if c.HookPenalty != nil {
+		log.Info("[PoSV]HookPenalty", "number", number)
+		penaltys, err := c.HookPenalty(chain, number)
+		if err != nil {
+			return epoch, err
+		}
+		if len(penaltys) > 0 {
+			epoch.Penalties = make([]common.Address, len(penaltys))
+			for i, v := range penaltys {
+				epoch.Penalties[i] = v
+				log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
+			}
+		}
+		penalized := func(address common.Address) bool {
+			for _, v := range penaltys {
+				if v == address {
+					return true
+				}
+			}
+			return false
+		}
+
+		if len(penaltys) > 0 {
+			var m1s MasterNodes
+			var m2s []common.Address
+			for _, v := range epoch.M1s {
+				if !penalized(v.Address) {
+					m1s = append(m1s, v)
+				}
+			}
+			for _, v := range epoch.M2s {
+				if !penalized(v) {
+					m2s = append(m2s, v)
+				}
+			}
+			if len(m1s) > 0 && len(m2s) > 0 {
+				epoch.M1s = m1s
+				epoch.M2s = m2s
+			}
+		}
+	}
+	return epoch, nil
+}
+
+// CalcReward return reward of current epoch
+func (c *PoSV) CalcReward(number uint64) *big.Int {
+	epochPerYear := 3600 * 24 * 365 / c.config.Period / c.config.Epoch
+	currentEpoch := (number - 1) / c.config.Epoch
+	var minted = new(big.Int)
+	var mintThisEpoch = c.config.Reward
+	for i := uint64(0); i < currentEpoch/epochPerYear; i++ {
+		mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(epochPerYear)))
+		minted = minted.Add(minted, mintedThisYear)
+
+		mintThisEpoch = new(big.Int).Mul(mintThisEpoch, big.NewInt(3))
+		mintThisEpoch = new(big.Int).Div(mintThisEpoch, big.NewInt(4))
+	}
+	mod := currentEpoch % epochPerYear
+	mintedThisYear := new(big.Int).Mul(mintThisEpoch, big.NewInt(int64(mod-1)))
+	minted = minted.Add(minted, mintedThisYear)
+	if minted.Cmp(c.config.TotalReward) >= 0 {
+		return new(big.Int)
+	}
+	if new(big.Int).Sub(c.config.TotalReward, minted).Cmp(mintThisEpoch) <= 0 {
+		return new(big.Int).Sub(c.config.TotalReward, minted)
+	}
+	return mintThisEpoch
 }

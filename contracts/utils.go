@@ -21,7 +21,6 @@ import (
 	"crypto/cipher"
 	cryptoRand "crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -37,7 +36,6 @@ import (
 	randomizeContract "github.com/juncachain/juncachain/contracts/randomize/contract"
 	contractValidator "github.com/juncachain/juncachain/contracts/validator/contract"
 	"github.com/juncachain/juncachain/core"
-	"github.com/juncachain/juncachain/core/state"
 	"github.com/juncachain/juncachain/core/types"
 	"github.com/juncachain/juncachain/ethclient"
 	"github.com/juncachain/juncachain/ethdb"
@@ -228,14 +226,15 @@ func BuildTxOpeningRandomize(nonce uint64, gasPrice *big.Int, randomizeAddr comm
 	return tx, nil
 }
 
-// GetCandidates get candidates and caps from contract
-func GetCandidates(client *ethclient.Client, number *big.Int) (map[common.Address]*big.Int, error) {
-	addr := common.HexToAddress(common.MasternodeVotingSMC)
+// GetCandidatesFromContract get candidates and caps from contract
+func GetCandidatesFromContract(client *ethclient.Client, blockNumber *big.Int) (map[common.Address]*big.Int, error) {
+	addr := common.HexToAddress(common.ValidatorSMC)
 	validator, err := contractValidator.NewJuncaValidator(addr, client)
 	if err != nil {
 		return nil, err
 	}
 	opts := new(bind.CallOpts)
+	opts.BlockNumber = blockNumber
 	candidates, err := validator.GetCandidates(opts)
 	if err != nil {
 		return nil, err
@@ -255,19 +254,15 @@ func GetCandidates(client *ethclient.Client, number *big.Int) (map[common.Addres
 	return ret, nil
 }
 
-// GetSignersFromContract Get signers signed for blockNumber from blockSigner contract.
-func GetSignersFromContract(stateDB *state.StateDB, blockHash common.Hash) ([]common.Address, error) {
-	return GetSignersFromState(stateDB, blockHash), nil
-}
-
-// GetSignersByExecutingEVM Get signers signed for blockNumber from blockSigner contract.
-func GetSignersByExecutingEVM(addrBlockSigner common.Address, client bind.ContractBackend, blockHash common.Hash) ([]common.Address, error) {
-	blockSigner, err := contract.NewBlockSigner(addrBlockSigner, client)
+// GetBlockSignersFromContract Get signers signed for blockHash from blockSigner contract.
+func GetBlockSignersFromContract(client bind.ContractBackend, blockHash common.Hash, blockNumber *big.Int) ([]common.Address, error) {
+	blockSigner, err := contract.NewBlockSigner(common.HexToAddress(common.BlockSignerSMC), client)
 	if err != nil {
 		log.Error("Fail get instance of blockSigner", "error", err)
 		return nil, err
 	}
 	opts := new(bind.CallOpts)
+	opts.BlockNumber = blockNumber
 	addrs, err := blockSigner.GetSigners(opts, blockHash)
 	if err != nil {
 		log.Error("Fail get block signers", "error", err)
@@ -277,12 +272,13 @@ func GetSignersByExecutingEVM(addrBlockSigner common.Address, client bind.Contra
 }
 
 // GetRandomizeFromContract  random from randomize contract.
-func GetRandomizeFromContract(client bind.ContractBackend, addrMasternode common.Address) (int64, error) {
+func GetRandomizeFromContract(client bind.ContractBackend, addrMasternode common.Address, blockNumber *big.Int) (int64, error) {
 	randomize, err := randomizeContract.NewJuncaRandomize(common.HexToAddress(common.RandomizeSMC), client)
 	if err != nil {
 		log.Error("Fail to get instance of randomize", "error", err)
 	}
 	opts := new(bind.CallOpts)
+	opts.BlockNumber = blockNumber
 	secrets, err := randomize.GetSecret(opts, addrMasternode)
 	if err != nil {
 		log.Error("Fail get secrets from randomize", "error", err)
@@ -295,27 +291,8 @@ func GetRandomizeFromContract(client bind.ContractBackend, addrMasternode common
 	return DecryptRandomizeFromSecretsAndOpening(secrets, opening)
 }
 
-func GetValidators(client *ethclient.Client, masters []common.Address) ([]common.Address, error) {
-	// Check m2 exists on chaindb.
-	// Get secrets and opening at epoc block checkpoint.
-	var candidates []int64
-	lenSigners := int64(len(masters))
-	if lenSigners > 0 {
-		for _, addr := range masters {
-			random, err := GetRandomizeFromContract(client, addr)
-			if err != nil {
-				return nil, err
-			}
-			candidates = append(candidates, random)
-		}
-		// Get randomize m2 list.
-		return GenM2FromRandomize(candidates, masters)
-	}
-	return nil, errors.New("Not found M1")
-}
-
-// GenM2FromRandomize Generate m2 listing from randomize array.
-func GenM2FromRandomize(randomizes []int64, masternodes []common.Address) ([]common.Address, error) {
+// GenerateM2FromRandomize Generate m2 listing from randomize array.
+func GenerateM2FromRandomize(randomizes []int64, masternodes []common.Address) ([]common.Address, error) {
 	total := int64(0)
 	for _, j := range randomizes {
 		total += j

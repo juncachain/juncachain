@@ -58,7 +58,7 @@ func TestValidator(t *testing.T) {
 	validatorCap.SetString("50000000000000000000000", 10)
 	validatorAddress, validator, err := DeployValidator(transactOpts, contractBackend, []common.Address{addr}, []*big.Int{validatorCap}, addr)
 	if err != nil {
-		t.Fatalf("can't deploy root registry: %v", err)
+		t.Fatalf("can't DeployValidator: %v", err)
 	}
 	contractBackend.Commit()
 
@@ -123,7 +123,7 @@ func TestRewardBalance(t *testing.T) {
 		big.NewInt(100),
 	)
 	if err != nil {
-		t.Fatalf("can't deploy root registry: %v", err)
+		t.Fatalf("can't DeployJuncaValidator: %v", err)
 	}
 	contractBackend.Commit()
 
@@ -158,7 +158,7 @@ func TestRewardBalance(t *testing.T) {
 		logCaps[i] = &logCap{accounts[randIndex].From.String(), randCap}
 	}
 
-	foundationAddr := common.HexToAddress(common.JuncaFoudation)
+	foundationAddr := common.HexToAddress(common.JuncaFoundation)
 	totalReward := new(big.Int).SetInt64(15 * 1000)
 	rewards, err := GetRewardBalancesRate(foundationAddr, acc3Addr, totalReward, baseValidator)
 	if err != nil {

@@ -213,7 +213,21 @@ func (st *StateTransition) buyGas() error {
 	return nil
 }
 
-func (st *StateTransition) preCheck() error {
+func (st *StateTransition) mintGas() error {
+	var balanceCheck = st.value
+	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
+		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
+	}
+	if err := st.gp.SubGas(st.msg.Gas()); err != nil {
+		return err
+	}
+	st.gas += st.msg.Gas()
+
+	st.initialGas = st.msg.Gas()
+	return nil
+}
+
+func (st *StateTransition) preCheck(buildInTx bool) error {
 	// Only check transactions that are not fake
 	if !st.msg.IsFake() {
 		// Make sure this transaction's nonce is correct.
@@ -258,6 +272,9 @@ func (st *StateTransition) preCheck() error {
 			}
 		}
 	}
+	if buildInTx {
+		return st.mintGas()
+	}
 	return st.buyGas()
 }
 
@@ -285,8 +302,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// 5. there is no overflow when calculating intrinsic gas
 	// 6. caller has enough balance to cover asset transfer for **topmost** call
 
+	buildInTx := common.BuildInTx(st.to())
+
 	// Check clauses 1-3, buy gas if everything is correct
-	if err := st.preCheck(); err != nil {
+	if err := st.preCheck(buildInTx); err != nil {
 		return nil, err
 	}
 
@@ -335,12 +354,14 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 
-	if !rules.IsLondon {
-		// Before EIP-3529: refunds were capped to gasUsed / 2
-		st.refundGas(params.RefundQuotient)
-	} else {
-		// After EIP-3529: refunds are capped to gasUsed / 5
-		st.refundGas(params.RefundQuotientEIP3529)
+	if !buildInTx {
+		if !rules.IsLondon {
+			// Before EIP-3529: refunds were capped to gasUsed / 2
+			st.refundGas(params.RefundQuotient)
+		} else {
+			// After EIP-3529: refunds are capped to gasUsed / 5
+			st.refundGas(params.RefundQuotientEIP3529)
+		}
 	}
 	effectiveTip := st.gasPrice
 	if rules.IsLondon {
@@ -354,7 +375,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	} else {
 		fee := new(big.Int).SetUint64(st.gasUsed())
 		fee.Mul(fee, effectiveTip)
-		st.state.AddBalance(st.evm.Context.Coinbase, fee)
+		if !buildInTx {
+			st.state.AddBalance(st.evm.Context.Coinbase, fee)
+		}
 	}
 
 	return &ExecutionResult{

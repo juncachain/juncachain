@@ -57,7 +57,7 @@ func TestRandomize(t *testing.T) {
 	randomizeAddress, randomize, err := DeployRandomize(transactOpts, contractBackend)
 	t.Log("contract address", randomizeAddress.String())
 	if err != nil {
-		t.Fatalf("can't deploy root registry: %v", err)
+		t.Fatalf("can't DeployRandomize: %v", err)
 	}
 	contractBackend.Commit()
 

@@ -31,24 +31,21 @@ import (
 )
 
 var (
-	key, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
-	addr   = crypto.PubkeyToAddress(key.PublicKey)
+	key, _     = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr       = crypto.PubkeyToAddress(key.PublicKey)
+	initialBal = big.NewInt(100000000000000000)
 )
 
 func TestBlockSigner(t *testing.T) {
-	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: big.NewInt(100000000000000000)}}, 0)
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{addr: {Balance: initialBal}}, 0)
 	transactOpts, err := bind.NewKeyedTransactorWithChainID(key, contractBackend.Blockchain().Config().ChainID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	head, _ := contractBackend.HeaderByNumber(context.Background(), nil) // Should be child's, good enough
-	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
-
-	transactOpts.GasPrice = gasPrice
 	blockSignerAddress, blockSigner, err := DeployBlockSigner(transactOpts, contractBackend, big.NewInt(99))
 	if err != nil {
-		t.Fatalf("can't deploy root registry: %v", err)
+		t.Fatalf("can't DeployBlockSigner: %v", err)
 	}
 	contractBackend.Commit()
 
@@ -58,7 +55,7 @@ func TestBlockSigner(t *testing.T) {
 	code, _ := contractBackend.CodeAt(ctx, blockSignerAddress, nil)
 	t.Log("contract code", hexutil.Encode(code))
 
-	head, _ = contractBackend.HeaderByNumber(context.Background(), nil)
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
 	f := func(key, val common.Hash) bool {
 		t.Log(key.Hex(), val.Hex())
 		return true
@@ -84,7 +81,9 @@ func TestBlockSigner(t *testing.T) {
 		t.Fatalf("can't get candidates: %v", err)
 	}
 	for _, it := range signers {
-		t.Log("signer", it.String())
+		if it != addr {
+			t.Fatal("signer not matched")
+		}
 	}
 }
 
