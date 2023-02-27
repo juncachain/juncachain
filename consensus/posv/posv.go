@@ -362,11 +362,8 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
-		newEpoch, err := c.makeEpoch(chain, number)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
+		if newEpoch, _ := c.makeEpoch(chain, number); newEpoch != nil &&
+			!bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
 			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), newEpoch.String())
 		}
 	}
@@ -759,7 +756,8 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 	if number%c.config.Epoch != 0 {
 		return nil, errors.New("Not checkpoint")
 	}
-	ms, err := c.HookCandidates(new(big.Int).SetUint64(number - 1))
+	// Must shift blocks to get data from stateDB when sync node
+	ms, err := c.HookCandidates(new(big.Int).SetUint64(number - common.EpochBlockCheckWiggle))
 	if err != nil {
 		return nil, err
 	}
@@ -781,13 +779,13 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 		}
 	}
 
-	m2s, err := c.HookRandomizeSigners(new(big.Int).SetInt64(int64(number-1)), masterNodes)
+	m2s, err := c.HookRandomizeSigners(new(big.Int).SetInt64(int64(number-common.EpochBlockCheckWiggle)), masterNodes)
 	if err != nil {
 		return nil, err
 	}
 	epoch.M2s = m2s
 
-	newEpoch, err := c.penalty(chain, number, epoch)
+	newEpoch, err := c.penalty(chain, number-common.EpochBlockCheckWiggle, epoch)
 	if err != nil {
 		return nil, err
 	}
