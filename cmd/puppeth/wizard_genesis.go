@@ -34,10 +34,12 @@ import (
 	"github.com/juncachain/juncachain/accounts/abi/bind/backends"
 	"github.com/juncachain/juncachain/common"
 	"github.com/juncachain/juncachain/consensus/posv"
-	blockSignerContract "github.com/juncachain/juncachain/contracts/blocksigner"
-	jrc21Contract "github.com/juncachain/juncachain/contracts/jrc21issuer"
-	randomizeContract "github.com/juncachain/juncachain/contracts/randomize"
-	validatorContract "github.com/juncachain/juncachain/contracts/validator"
+	"github.com/juncachain/juncachain/contracts/WJGC"
+	"github.com/juncachain/juncachain/contracts/blocksigner"
+	"github.com/juncachain/juncachain/contracts/jrc21issuer"
+	"github.com/juncachain/juncachain/contracts/juncaswap"
+	"github.com/juncachain/juncachain/contracts/randomize"
+	"github.com/juncachain/juncachain/contracts/validator"
 	"github.com/juncachain/juncachain/core"
 	"github.com/juncachain/juncachain/crypto"
 	"github.com/juncachain/juncachain/log"
@@ -192,6 +194,20 @@ func (w *wizard) makeGenesis() {
 		}
 		if err := deployJRC21IssuerContract(genesis.Alloc); err != nil {
 			log.Crit("Error on deployJRC21IssuerContract", "err", err)
+		}
+		if err := deployWJGCContract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployWJGCContract", "err", err)
+		}
+		if initCodeHash, err := deployJuncaswapFactoryContract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployJuncaswapFactoryContract", "err", err)
+		} else if !bytes.Equal(initCodeHash.Bytes(), common.HexToHash("0x9e31216f67652dbf1044d36bd8df52d2a89040a41ccfa5d31cf798214483f971").Bytes()) {
+			log.Crit("Error on deployJuncaswapFactoryContract bad init code hash", "hash", initCodeHash.Hex())
+		}
+		if err := deployJuncaswapRouter1Contract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployJuncaswapRouter1Contract", "err", err)
+		}
+		if err := deployJuncaswapRouter2Contract(genesis.Alloc); err != nil {
+			log.Crit("Error on deployJuncaswapRouter2Contract", "err", err)
 		}
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
@@ -391,7 +407,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 		validatorCaps = append(validatorCaps, stakeCap)
 		signers = append(signers, masters[i].Address)
 	}
-	validatorAddress, _, err := validatorContract.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
+	validatorAddress, _, err := validator.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
 	if err != nil {
 		log.Error("Can't DeployValidator", "err", err)
 		return err
@@ -401,7 +417,6 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
 		storage[key] = val
-		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
 
@@ -438,7 +453,7 @@ func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAllo
 	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
 	transactOpts.GasPrice = gasPrice
 
-	blockSignerAddress, _, err := blockSignerContract.DeployBlockSigner(transactOpts, contractBackend, big.NewInt(int64(epochNumber)))
+	blockSignerAddress, _, err := blocksigner.DeployBlockSigner(transactOpts, contractBackend, big.NewInt(int64(epochNumber)))
 	if err != nil {
 		log.Error("Can't DeployBlockSigner", "err", err)
 		return err
@@ -448,7 +463,6 @@ func deployBlockSignerContract(epochNumber uint64, genesisAlloc core.GenesisAllo
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
 		storage[key] = val
-		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
 
@@ -485,7 +499,7 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(1))
 	transactOpts.GasPrice = gasPrice
 
-	randomizeAddress, _, err := randomizeContract.DeployRandomize(transactOpts, contractBackend)
+	randomizeAddress, _, err := randomize.DeployRandomize(transactOpts, contractBackend)
 	if err != nil {
 		log.Error("Can't DeployRandomize", "err", err)
 		return err
@@ -495,7 +509,6 @@ func deployRandomizeContract(genesisAlloc core.GenesisAlloc) error {
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
 		storage[key] = val
-		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
 
@@ -533,7 +546,7 @@ func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
 	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
 	transactOpts.GasLimit = 30000000
 
-	contractAddr, _, err := jrc21Contract.DeployJRC21Issuer(transactOpts, contractBackend, big.NewInt(common.BuildInTxGas))
+	contractAddr, _, err := jrc21issuer.DeployJRC21Issuer(transactOpts, contractBackend, big.NewInt(common.BuildInTxGas))
 	if err != nil {
 		log.Error("Can't DeployJRC21Issuer", "err", err)
 		return err
@@ -543,7 +556,6 @@ func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
 	storage := make(map[common.Hash]common.Hash)
 	f := func(key, val common.Hash) bool {
 		storage[key] = val
-		log.Info("DecodeBytes", "value", val.String(), "decode", storage[key].String())
 		return true
 	}
 
@@ -564,6 +576,200 @@ func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
 	}
 
 	genesisAlloc[common.HexToAddress(common.JRC21IssuerSMC)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployWJGCContract(genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{
+		addr: {Balance: big.NewInt(1000000000000000000)}},
+		30000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	transactOpts.GasLimit = 30000000
+
+	contractAddr, _, err := WJGC.DeployWrappedJGC(transactOpts, contractBackend)
+	if err != nil {
+		log.Error("Can't DeployWrappedJGC", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, contractAddr, nil)
+
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(contractAddr, f); err != nil {
+		log.Error("can't foreach JRC21Issuer contractAddr", "contractAddr", contractAddr.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.JuncaswapWJGC)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployJuncaswapFactoryContract(genesisAlloc core.GenesisAlloc) (common.Hash, error) {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{
+		addr: {Balance: big.NewInt(1000000000000000000)}},
+		30000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	transactOpts.GasLimit = 30000000
+
+	contractAddr, factory, err := juncaswap.DeployJuncaswapFactory(transactOpts, contractBackend,
+		common.HexToAddress(common.JuncaswapWJGC))
+	if err != nil {
+		log.Error("Can't DeployJuncaswapFactory", "err", err)
+		return common.Hash{}, err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, contractAddr, nil)
+
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return common.Hash{}, err
+	}
+	if err := stateDB.ForEachStorage(contractAddr, f); err != nil {
+		log.Error("can't foreach JRC21Issuer contractAddr", "contractAddr", contractAddr.Hex())
+		return common.Hash{}, err
+	}
+
+	codeHash, err := factory.GetCodeHash()
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	genesisAlloc[common.HexToAddress(common.JuncaswapFactory)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return common.BytesToHash(codeHash[:]), nil
+}
+
+func deployJuncaswapRouter1Contract(genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{
+		addr: {Balance: big.NewInt(1000000000000000000)}},
+		30000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	transactOpts.GasLimit = 30000000
+
+	contractAddr, _, err := juncaswap.DeployJuncaswapRouter(transactOpts, contractBackend, common.HexToAddress(common.JuncaswapFactory), common.HexToAddress(common.JuncaswapWJGC))
+	if err != nil {
+		log.Error("Can't DeployJuncaswapRouter", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, contractAddr, nil)
+
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(contractAddr, f); err != nil {
+		log.Error("can't foreach JRC21Issuer contractAddr", "contractAddr", contractAddr.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.JuncaswapRouter1)] = core.GenesisAccount{
+		Balance: big.NewInt(0),
+		Code:    code,
+		Storage: storage,
+	}
+	return nil
+}
+
+func deployJuncaswapRouter2Contract(genesisAlloc core.GenesisAlloc) error {
+	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	addr := crypto.PubkeyToAddress(pKey.PublicKey)
+
+	contractBackend := backends.NewSimulatedBackend(core.GenesisAlloc{
+		addr: {Balance: big.NewInt(1000000000000000000)}},
+		30000000)
+	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
+	transactOpts.GasLimit = 30000000
+
+	contractAddr, _, err := juncaswap.DeployJuncaswapRouter(transactOpts, contractBackend, common.HexToAddress(common.JuncaswapFactory), common.HexToAddress(common.JuncaswapWJGC))
+	if err != nil {
+		log.Error("Can't DeployJuncaswapRouter", "err", err)
+		return err
+	}
+	contractBackend.Commit()
+
+	storage := make(map[common.Hash]common.Hash)
+	f := func(key, val common.Hash) bool {
+		storage[key] = val
+		return true
+	}
+
+	d := time.Now().Add(1000 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), d)
+	defer cancel()
+	code, _ := contractBackend.CodeAt(ctx, contractAddr, nil)
+
+	head, _ := contractBackend.HeaderByNumber(context.Background(), nil)
+	stateDB, err := contractBackend.Blockchain().StateAt(head.Root)
+	if err != nil {
+		log.Error("can't get stateDB", "root", head.Root.Hex(), "err", err)
+		return err
+	}
+	if err := stateDB.ForEachStorage(contractAddr, f); err != nil {
+		log.Error("can't foreach JRC21Issuer contractAddr", "contractAddr", contractAddr.Hex())
+		return err
+	}
+
+	genesisAlloc[common.HexToAddress(common.JuncaswapRouter2)] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 		Code:    code,
 		Storage: storage,
