@@ -1,11 +1,15 @@
 package common
 
 const (
-	BlockSignerSMC  = "0x000000000000000000426C6F636b5369676E6572" // []byte("BlockSigner")
-	RandomizeSMC    = "0x000000000000000000000052616E646f6D697a65" // []byte("Randomize")
-	ValidatorSMC    = "0x000000000000000000000056616c696461746f72" // []byte("Validator")
-	JRC21IssuerSMC  = "0x0000000000000000004A52433231497373756572" // []byte("JRC21Issuer")
-	JuncaFoundation = "0x0000000000004a756E6361466F75646174696f6E"
+	BlockSignerSMC   = "0x000000000000000000426C6F636b5369676E6572" // []byte("BlockSigner")
+	RandomizeSMC     = "0x000000000000000000000052616E646f6D697a65" // []byte("Randomize")
+	ValidatorSMC     = "0x000000000000000000000056616c696461746f72" // []byte("Validator")
+	JRC21IssuerSMC   = "0x0000000000000000004A52433231497373756572" // []byte("JRC21Issuer")
+	JuncaswapWJGC    = "0x000000000000004a756e636153776170574A4743" // []byte("JuncaSwapWJGC")
+	JuncaswapFactory = "0x000000004a756e636173776170466163746F7279" // []byte("JuncaswapFactory")
+	JuncaswapRouter1 = "0x000000004A756E636173776170526f7574657231" // []byte("JuncaswapRouter1")
+	JuncaswapRouter2 = "0x000000004a756E636173776170526F7574657232" // []byte("JuncaswapRouter2")
+	JuncaFoundation  = "0x00000000004a756e6361466F756E646174696f6e" // []byte("JuncaFoundation")
 )
 
 // contract Method
