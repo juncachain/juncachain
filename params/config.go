@@ -413,23 +413,25 @@ func (c *CliqueConfig) String() string {
 
 // PoSVConfig is the consensus engine configs for proof-of-voting based sealing.
 type PoSVConfig struct {
-	Period      uint64         `json:"period"`      // Number of seconds between blocks to enforce
-	Epoch       uint64         `json:"epoch"`       // Epoch length to reset votes and checkpoint
-	MinStaked   *big.Int       `json:"minStaked"`   // validator min staked
-	Reward      *big.Int       `json:"reward"`      // reward first epoch
-	TotalReward *big.Int       `json:"totalReward"` // reward total
-	Foundation  common.Address `json:"foundation"`
-	InstanceDir string         `json:"-"`
+	Period         uint64         `json:"period"`      // Number of seconds between blocks to enforce
+	Epoch          uint64         `json:"epoch"`       // Epoch length to reset votes and checkpoint
+	MinStaked      *big.Int       `json:"minStaked"`   // validator min staked
+	Reward         *big.Int       `json:"reward"`      // reward first epoch
+	TotalReward    *big.Int       `json:"totalReward"` // reward total
+	Foundation     common.Address `json:"foundation"`
+	JuncaswapAdmin common.Address `json:"juncaswapAdmin"`
+	InstanceDir    string         `json:"-"`
 }
 
 func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
 	type PoSVConfig struct {
-		Period      uint64                `json:"period"`
-		Epoch       uint64                `json:"epoch"`
-		MinStaked   *math.HexOrDecimal256 `json:"minStaked"`
-		Reward      *math.HexOrDecimal256 `json:"reward"`
-		TotalReward *math.HexOrDecimal256 `json:"totalReward"`
-		Foundation  common.Address        `json:"foundation"`
+		Period         uint64                `json:"period"`
+		Epoch          uint64                `json:"epoch"`
+		MinStaked      *math.HexOrDecimal256 `json:"minStaked"`
+		Reward         *math.HexOrDecimal256 `json:"reward"`
+		TotalReward    *math.HexOrDecimal256 `json:"totalReward"`
+		Foundation     common.Address        `json:"foundation"`
+		JuncaswapAdmin common.Address        `json:"juncaswapAdmin"`
 	}
 
 	var enc PoSVConfig
@@ -439,17 +441,19 @@ func (pc PoSVConfig) MarshalJSON() ([]byte, error) {
 	enc.Reward = (*math.HexOrDecimal256)(pc.Reward)
 	enc.TotalReward = (*math.HexOrDecimal256)(pc.TotalReward)
 	enc.Foundation = pc.Foundation
+	enc.JuncaswapAdmin = pc.JuncaswapAdmin
 	return json.Marshal(&enc)
 }
 
 func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
 	type PoSVConfig struct {
-		Period      uint64                `json:"period"`
-		Epoch       uint64                `json:"epoch"`
-		MinStaked   *math.HexOrDecimal256 `json:"minStaked"`
-		Reward      *math.HexOrDecimal256 `json:"reward"`
-		TotalReward *math.HexOrDecimal256 `json:"totalReward"`
-		Foundation  common.Address        `json:"foundation"`
+		Period         uint64                `json:"period"`
+		Epoch          uint64                `json:"epoch"`
+		MinStaked      *math.HexOrDecimal256 `json:"minStaked"`
+		Reward         *math.HexOrDecimal256 `json:"reward"`
+		TotalReward    *math.HexOrDecimal256 `json:"totalReward"`
+		Foundation     common.Address        `json:"foundation"`
+		JuncaswapAdmin common.Address        `json:"juncaswapAdmin"`
 	}
 	var dec PoSVConfig
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -467,6 +471,7 @@ func (pc *PoSVConfig) UnmarshalJSON(input []byte) error {
 		pc.TotalReward = (*big.Int)(dec.TotalReward)
 	}
 	pc.Foundation = dec.Foundation
+	pc.JuncaswapAdmin = dec.JuncaswapAdmin
 	return nil
 }
 
