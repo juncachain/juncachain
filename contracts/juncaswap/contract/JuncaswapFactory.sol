@@ -131,8 +131,8 @@ interface IJuncaswapV2Callee {
 contract JuncaswapV2ERC20 is IJuncaswapV2ERC20 {
     using SafeMath for uint;
 
-    string public constant name = 'Juncaswap V2';
-    string public constant symbol = 'JC-V2';
+    string public constant name = 'Juncaswap';
+    string public constant symbol = 'Junca-LP';
     uint8 public constant decimals = 18;
     uint  public totalSupply;
     mapping(address => uint) public balanceOf;
@@ -449,8 +449,8 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
 	
 	// rechage gas for nogas pair
 	function gasRecharge()public payable{
-		require(msg.value >= 1 ether && nogas,"FORBIDDEN");
-		if(address(this).balance<=gasLowWaterMark){
+		require(msg.value >= gasLowWaterMark && nogas,"FORBIDDEN");
+		if(address(this).balance<=gasLowWaterMark+msg.value){
 			issuer = msg.sender;
 		}
 	}
