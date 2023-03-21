@@ -69,7 +69,7 @@ interface IJuncaswapV2Pair {
 
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount0, uint amount1);
-    function swap(address caller,uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
     function skim(address to) external;
     function sync() external;
 
@@ -451,7 +451,7 @@ contract JuncaswapV2Router02 is IJuncaswapV2Router02 {
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOut) : (amountOut, uint(0));
             address to = i < path.length - 2 ? JuncaswapV2Library.pairFor(factory, output, path[i + 2]) : _to;
             IJuncaswapV2Pair(JuncaswapV2Library.pairFor(factory, input, output)).swap(
-                address(this),amount0Out, amount1Out, to, new bytes(0)
+                amount0Out, amount1Out, to, new bytes(0)
             );
         }
     }
@@ -567,7 +567,7 @@ contract JuncaswapV2Router02 is IJuncaswapV2Router02 {
             }
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOutput) : (amountOutput, uint(0));
             address to = i < path.length - 2 ? JuncaswapV2Library.pairFor(factory, output, path[i + 2]) : _to;
-            pair.swap(address(this),amount0Out, amount1Out, to, new bytes(0));
+            pair.swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
@@ -712,7 +712,7 @@ library JuncaswapV2Library {
                 hex'ff',
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'9e31216f67652dbf1044d36bd8df52d2a89040a41ccfa5d31cf798214483f971' // init code hash
+                hex'9e8d85aba05360d1c178b5ee7e8e2a24909d582d0327146775a6c074657557e0' // init code hash
             ))));
     }
 

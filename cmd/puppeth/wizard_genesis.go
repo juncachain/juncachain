@@ -200,7 +200,7 @@ func (w *wizard) makeGenesis() {
 		}
 		if initCodeHash, err := deployJuncaswapFactoryContract(genesis.Alloc); err != nil {
 			log.Crit("Error on deployJuncaswapFactoryContract", "err", err)
-		} else if !bytes.Equal(initCodeHash.Bytes(), common.HexToHash("0x9e31216f67652dbf1044d36bd8df52d2a89040a41ccfa5d31cf798214483f971").Bytes()) {
+		} else if !bytes.Equal(initCodeHash.Bytes(), common.HexToHash("0x9e8d85aba05360d1c178b5ee7e8e2a24909d582d0327146775a6c074657557e0").Bytes()) {
 			log.Crit("Error on deployJuncaswapFactoryContract bad init code hash", "hash", initCodeHash.Hex())
 		}
 		if err := deployJuncaswapRouter1Contract(genesis.Alloc); err != nil {

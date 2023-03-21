@@ -69,7 +69,7 @@ interface IJuncaswapV2Pair {
 
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount0, uint amount1);
-    function swap(address caller,uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
     function skim(address to) external;
     function sync() external;
 
@@ -384,14 +384,13 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function swap(address caller,uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock {
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock {
         require(amount0Out > 0 || amount1Out > 0, 'JuncaswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         require(amount0Out < _reserve0 && amount1Out < _reserve1, 'JuncaswapV2: INSUFFICIENT_LIQUIDITY');
-        if (nogas){
-            require(caller == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: only caller JuncaswapRouter2");
-            block.coinbase.transfer(IJuncaswapV2Factory(factory).gasPerTx());
-        }
+        if (!nogas){require(msg.sender != 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: only not caller JuncaswapRouter2");}
+        if (nogas) {require(msg.sender == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: only caller JuncaswapRouter2");}
+        if (nogas) {block.coinbase.transfer(IJuncaswapV2Factory(factory).gasPerTx());}
 
         uint balance0;
         uint balance1;
