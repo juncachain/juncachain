@@ -712,7 +712,7 @@ library JuncaswapV2Library {
                 hex'ff',
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'681c995fa352a922a0b7344dc45d9290a10bc7127f5ed27aa6406059b26da7ad' // init code hash
+                hex'922443d1063cd3d6799c58ce57867a7cfa4136a3d9e70de5066d06203a8ef46c' // init code hash
             ))));
     }
 

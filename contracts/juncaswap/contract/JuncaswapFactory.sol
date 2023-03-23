@@ -245,6 +245,12 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
         unlocked = 1;
     }
 
+    modifier authCaller(){
+        if(nogas)require(msg.sender == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
+        if(!nogas)require(msg.sender != 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
+        _;
+    }
+
 	// externsion for Juncaswap
 	bool public nogas;						// nogas transact
 	address public issuer;					// pair issuer
@@ -335,7 +341,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function mint(address to) external lock returns (uint liquidity) {
+    function mint(address to) external lock authCaller returns (uint liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint balance0 = IERC20(token0).balanceOf(address(this));
         uint balance1 = IERC20(token1).balanceOf(address(this));
@@ -359,7 +365,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function burn(address to) external lock returns (uint amount0, uint amount1) {
+    function burn(address to) external lock authCaller returns (uint amount0, uint amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         address _token0 = token0;                                // gas savings
         address _token1 = token1;                                // gas savings
@@ -384,13 +390,16 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock {
-        if(nogas){return swapnogas(amount0Out,amount1Out,to,data);}
-
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external lock authCaller{
         require(amount0Out > 0 || amount1Out > 0, 'JuncaswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         require(amount0Out < _reserve0 && amount1Out < _reserve1, 'JuncaswapV2: INSUFFICIENT_LIQUIDITY');
-        require(msg.sender != 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: only caller not JuncaswapRouter2");
+
+        if(nogas){
+            uint gasPerTx = IJuncaswapV2Factory(factory).gasPerTx();
+            require(address(this).balance >= gasPerTx,"JuncaswapV2: GAS INSUFFICIENT");
+            block.coinbase.transfer(gasPerTx);
+        }
 
         uint balance0;
         uint balance1;
@@ -407,44 +416,8 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
         uint amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
         uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
         require(amount0In > 0 || amount1In > 0, 'JuncaswapV2: INSUFFICIENT_INPUT_AMOUNT');
-
-        { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
-        uint balance0Adjusted = balance0.mul(1000).sub(amount0In.mul(3));
-        uint balance1Adjusted = balance1.mul(1000).sub(amount1In.mul(3));
-        require(balance0Adjusted.mul(balance1Adjusted) >= uint(_reserve0).mul(_reserve1).mul(1000**2), 'JuncaswapV2: K');
-        }
-
-        _update(balance0, balance1, _reserve0, _reserve1);
-        emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
-    }
-
-    function swapnogas(uint amount0Out, uint amount1Out, address to, bytes memory data)internal{
-        require(amount0Out > 0 || amount1Out > 0, 'JuncaswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
-        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
-        require(amount0Out < _reserve0 && amount1Out < _reserve1, 'JuncaswapV2: INSUFFICIENT_LIQUIDITY');
-        require(msg.sender == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: only caller JuncaswapRouter2");
-        uint gasPerTx = IJuncaswapV2Factory(factory).gasPerTx();
-        require(address(this).balance >= gasPerTx,"JuncaswapV2: nogas pair gas insufficient");
-        block.coinbase.transfer(gasPerTx);
-
-        uint balance0;
-        uint balance1;
-        { // scope for _token{0,1}, avoids stack too deep errors
-        address _token0 = token0;
-        address _token1 = token1;
-        require(to != _token0 && to != _token1, 'JuncaswapV2: INVALID_TO');
-        if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
-        if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
-        if (data.length > 0) IJuncaswapV2Callee(to).juncaswapV2Call(msg.sender, amount0Out, amount1Out, data);
-        balance0 = IERC20(_token0).balanceOf(address(this));
-        balance1 = IERC20(_token1).balanceOf(address(this));
-        }
-        uint amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
-        uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
-        require(amount0In > 0 || amount1In > 0, 'JuncaswapV2: INSUFFICIENT_INPUT_AMOUNT');
-
-		if (amount0In>0){require(amount0In > mtv0,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
-		if (amount1In>0){require(amount1In > mtv1,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
+		if (nogas && amount0In>0){require(amount0In > mtv0,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
+		if (nogas && amount1In>0){require(amount1In > mtv1,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
 
         { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
         uint balance0Adjusted = balance0.mul(1000).sub(amount0In.mul(3));
