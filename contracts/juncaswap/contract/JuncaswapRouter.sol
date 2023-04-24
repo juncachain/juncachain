@@ -15,11 +15,11 @@ interface IJuncaswapV2Factory {
     function allPairs(uint) external view returns (address pair);
     function allPairsLength() external view returns (uint);
 
-    function createPair(address tokenA, address tokenB, bool nogas) external returns (address pair);
+    function createPair(address tokenA, address tokenB, bool gasless) external returns (address pair);
 
     function setFeeTo(address) external;
     function setFeeToSetter(address) external;
-	
+
 	// externsion for Juncaswap
 	function gasPerTx()external view returns(uint);
 	function setGasPerTx(uint)external;
@@ -74,9 +74,9 @@ interface IJuncaswapV2Pair {
     function sync() external;
 
     function initialize(address, address, address, bool) external;
-	
+
 	// externsion for Juncaswap
-	function nogas()external view returns(bool);
+	function gasless()external view returns(bool);
 	function gasLeft()external view returns(uint);
     function gasPerTx()external view returns(uint);
     function gasLowWaterMark()external returns(uint);
@@ -712,7 +712,7 @@ library JuncaswapV2Library {
                 hex'ff',
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'922443d1063cd3d6799c58ce57867a7cfa4136a3d9e70de5066d06203a8ef46c' // init code hash
+                hex'40756719280cc191de6684a3ab5350a8f6a4e1c2f4d257a14ca9e8a067354a10' // init code hash
             ))));
     }
 

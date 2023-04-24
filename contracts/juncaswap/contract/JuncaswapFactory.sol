@@ -15,11 +15,11 @@ interface IJuncaswapV2Factory {
     function allPairs(uint) external view returns (address pair);
     function allPairsLength() external view returns (uint);
 
-    function createPair(address tokenA, address tokenB, bool nogas) external returns (address pair);
+    function createPair(address tokenA, address tokenB, bool gasless) external returns (address pair);
 
     function setFeeTo(address) external;
     function setFeeToSetter(address) external;
-	
+
 	// externsion for Juncaswap
 	function gasPerTx()external view returns(uint);
 	function setGasPerTx(uint)external;
@@ -76,7 +76,7 @@ interface IJuncaswapV2Pair {
     function initialize(address, address, address, bool) external;
 
 	// externsion of Juncaswap
-	function nogas()external view returns(bool);
+	function gasless()external view returns(bool);
 	function gasLeft()external view returns(uint);
     function gasPerTx()external view returns(uint);
     function gasLowWaterMark()external returns(uint);
@@ -246,13 +246,13 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     modifier authCaller(){
-        if(nogas)require(msg.sender == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
-        if(!nogas)require(msg.sender != 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
+        if(gasless)require(msg.sender == 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
+        if(!gasless)require(msg.sender != 0x000000004a756E636173776170526F7574657232,"JuncaswapV2: CALLER FORBIDDEN");
         _;
     }
 
 	// externsion for Juncaswap
-	bool public nogas;						// nogas transact
+	bool public gasless;						// gasless transact
 	address public issuer;					// pair issuer
 	uint public gasLowWaterMark = 1 ether;  // anyone can get issuer when trigger low water mark
 	uint private mtv0;                      // mint token0 transact value when sold
@@ -286,12 +286,12 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // called once by the factory at time of deployment
-    function initialize(address _token0, address _token1,address _issuer,bool _nogas) external {
+    function initialize(address _token0, address _token1,address _issuer,bool _gasless) external {
         require(msg.sender == factory, 'JuncaswapV2: FORBIDDEN'); // sufficient check
         token0 = _token0;
         token1 = _token1;
 		issuer = _issuer;
-		nogas = _nogas;
+		gasless = _gasless;
     }
 
     // update reserves and, on the first call per block, price accumulators
@@ -311,7 +311,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     }
 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
-	// if nogas mode,mint liquidity equivalent to 1/3th of the growth in sqrt(k)
+	// if gasless mode,mint liquidity equivalent to 1/3th of the growth in sqrt(k)
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
         address feeTo = IJuncaswapV2Factory(factory).feeTo();
         feeOn = feeTo != address(0);
@@ -327,7 +327,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
 						uint liquidity = numerator / denominator;
 						if (liquidity > 0) _mint(feeTo, liquidity);
 					}
-					if(nogas){
+					if(gasless){
 						uint numerator = totalSupply.mul(rootK.sub(rootKLast)).mul(10);
 						uint denominator = rootK.mul(20).add(rootKLast.mul(10));
 						uint liquidity = numerator / denominator;
@@ -395,7 +395,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         require(amount0Out < _reserve0 && amount1Out < _reserve1, 'JuncaswapV2: INSUFFICIENT_LIQUIDITY');
 
-        if(nogas){
+        if(gasless){
             uint gasPerTx = IJuncaswapV2Factory(factory).gasPerTx();
             require(address(this).balance >= gasPerTx,"JuncaswapV2: GAS INSUFFICIENT");
             block.coinbase.transfer(gasPerTx);
@@ -416,8 +416,8 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
         uint amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
         uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
         require(amount0In > 0 || amount1In > 0, 'JuncaswapV2: INSUFFICIENT_INPUT_AMOUNT');
-		if (nogas && amount0In>0){require(amount0In > mtv0,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
-		if (nogas && amount1In>0){require(amount1In > mtv1,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
+		if (gasless && amount0In>0){require(amount0In > mtv0,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
+		if (gasless && amount1In>0){require(amount1In > mtv1,"JuncaswapV2:INPUT_AMOUNT_LIMIT");}
 
         { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
         uint balance0Adjusted = balance0.mul(1000).sub(amount0In.mul(3));
@@ -447,25 +447,25 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
 		return address(this).balance;
 	}
 
-	// return gas per tx when nogas
+	// return gas per tx when gasless
 	function gasPerTx()external view returns(uint){
-		if(nogas){
+		if(gasless){
 			return IJuncaswapV2Factory(factory).gasPerTx();
 		}
 		return 0;
 	}
 
-	// rechage gas for nogas pair
+	// rechage gas for gasless pair
 	function gasRecharge()public payable{
-		require(msg.value >= 1 ether && nogas,"FORBIDDEN");
+		require(msg.value >= 1 ether && gasless,"FORBIDDEN");
 		if(address(this).balance<=gasLowWaterMark){
 			issuer = msg.sender;
 		}
 	}
-	
+
 	// set min transact value
 	function setMTV(uint _mtv0,uint _mtv1)external{
-		require(msg.sender == issuer && nogas,"FORBIDDEN");
+		require(msg.sender == issuer && gasless,"FORBIDDEN");
 		mtv0 = _mtv0;
 		mtv1 = _mtv1;
 	}
@@ -473,7 +473,7 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
     function mtv()external view returns(uint,uint){
         return (mtv0,mtv1);
     }
-	
+
 	function() external payable {
         gasRecharge();
     }
@@ -482,8 +482,8 @@ contract JuncaswapV2Pair is IJuncaswapV2Pair, JuncaswapV2ERC20 {
 contract JuncaswapV2Factory is IJuncaswapV2Factory {
     address public feeTo;
     address public feeToSetter;
-	
-	uint public gasPerTx = 0.005 ether; // send gas to coinbase when nogas transact
+
+	uint public gasPerTx = 0.005 ether; // send gas to coinbase when gasless transact
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
@@ -503,7 +503,7 @@ contract JuncaswapV2Factory is IJuncaswapV2Factory {
         return keccak256(type(JuncaswapV2Pair).creationCode);
     }
 
-    function createPair(address tokenA, address tokenB,bool _nogas) external returns (address pair) {
+    function createPair(address tokenA, address tokenB,bool _gasless) external returns (address pair) {
         require(tokenA != tokenB, 'JuncaswapV2: IDENTICAL_ADDRESSES');
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), 'JuncaswapV2: ZERO_ADDRESS');
@@ -513,11 +513,11 @@ contract JuncaswapV2Factory is IJuncaswapV2Factory {
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
-        IJuncaswapV2Pair(pair).initialize(token0, token1,msg.sender,_nogas);
+        IJuncaswapV2Pair(pair).initialize(token0, token1,msg.sender,_gasless);
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);
-        emit PairCreated(token0, token1, pair, allPairs.length,_nogas);
+        emit PairCreated(token0, token1, pair, allPairs.length,_gasless);
     }
 
     function setFeeTo(address _feeTo) external {
