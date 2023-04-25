@@ -9,7 +9,6 @@ const (
 	JuncaswapFactory = "0x000000004a756e636173776170466163746F7279" // []byte("JuncaswapFactory")
 	JuncaswapRouter1 = "0x000000004A756E636173776170526f7574657231" // []byte("JuncaswapRouter1")
 	JuncaswapRouter2 = "0x000000004a756E636173776170526F7574657232" // []byte("JuncaswapRouter2")
-	JuncaFoundation  = "0x00000000004a756e6361466F756E646174696f6e" // []byte("JuncaFoundation")
 )
 
 // contract Method

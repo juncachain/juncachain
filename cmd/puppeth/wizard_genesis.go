@@ -148,8 +148,12 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Posv.TotalReward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(100000000))), big.NewInt(params.Ether))
 
 		fmt.Println()
-		fmt.Println("What is foundation wallet address? (default = 0x0000000000004a756E6361466F75646174696f6E)")
-		genesis.Config.Posv.Foundation = w.readDefaultAddress(common.HexToAddress(common.JuncaFoundation))
+		fmt.Println("What is foundation wallet address?")
+		genesis.Config.Posv.Foundation = *w.readAddress()
+
+		fmt.Println()
+		fmt.Println("What is Juncaswap administrator wallet address?")
+		genesis.Config.Posv.JuncaswapAdmin = *w.readAddress()
 
 		// We also need the initial list of signers
 		fmt.Println()
@@ -198,9 +202,9 @@ func (w *wizard) makeGenesis() {
 		if err := deployWJGCContract(genesis.Alloc); err != nil {
 			log.Crit("Error on deployWJGCContract", "err", err)
 		}
-		if initCodeHash, err := deployJuncaswapFactoryContract(genesis.Alloc); err != nil {
+		if initCodeHash, err := deployJuncaswapFactoryContract(genesis.Alloc, genesis.Config.Posv.JuncaswapAdmin); err != nil {
 			log.Crit("Error on deployJuncaswapFactoryContract", "err", err)
-		} else if !bytes.Equal(initCodeHash.Bytes(), common.HexToHash("0x9e8d85aba05360d1c178b5ee7e8e2a24909d582d0327146775a6c074657557e0").Bytes()) {
+		} else if !bytes.Equal(initCodeHash.Bytes(), common.HexToHash("0x40756719280cc191de6684a3ab5350a8f6a4e1c2f4d257a14ca9e8a067354a10").Bytes()) {
 			log.Crit("Error on deployJuncaswapFactoryContract bad init code hash", "hash", initCodeHash.Hex())
 		}
 		if err := deployJuncaswapRouter1Contract(genesis.Alloc); err != nil {
@@ -630,7 +634,7 @@ func deployWJGCContract(genesisAlloc core.GenesisAlloc) error {
 	return nil
 }
 
-func deployJuncaswapFactoryContract(genesisAlloc core.GenesisAlloc) (common.Hash, error) {
+func deployJuncaswapFactoryContract(genesisAlloc core.GenesisAlloc, feeToSetter common.Address) (common.Hash, error) {
 	pKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	addr := crypto.PubkeyToAddress(pKey.PublicKey)
 
@@ -641,7 +645,7 @@ func deployJuncaswapFactoryContract(genesisAlloc core.GenesisAlloc) (common.Hash
 	transactOpts.GasLimit = 30000000
 
 	contractAddr, factory, err := juncaswap.DeployJuncaswapFactory(transactOpts, contractBackend,
-		common.HexToAddress(common.JuncaswapWJGC))
+		feeToSetter)
 	if err != nil {
 		log.Error("Can't DeployJuncaswapFactory", "err", err)
 		return common.Hash{}, err
