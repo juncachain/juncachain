@@ -155,6 +155,10 @@ func (w *wizard) makeGenesis() {
 		fmt.Println("What is Juncaswap administrator wallet address?")
 		genesis.Config.Posv.JuncaswapAdmin = *w.readAddress()
 
+		fmt.Println()
+		fmt.Println("Who own the first masternodes? (mandatory)")
+		owner := *w.readAddress()
+
 		// We also need the initial list of signers
 		fmt.Println()
 		fmt.Println("Which accounts are allowed to seal? (mandatory at least one)")
@@ -187,7 +191,7 @@ func (w *wizard) makeGenesis() {
 		genesis.ExtraData = make([]byte, len(b))
 		copy(genesis.ExtraData, b)
 
-		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, genesis.Alloc); err != nil {
+		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, owner, genesis.Alloc); err != nil {
 			log.Crit("Error on deployValidatorContract", "err", err)
 		}
 		if err := deployBlockSignerContract(genesis.Config.Posv.Epoch, genesis.Alloc); err != nil {
@@ -393,7 +397,7 @@ func (w *wizard) manageGenesis() {
 	}
 }
 
-func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesisAlloc core.GenesisAlloc) error {
+func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, owner common.Address, genesisAlloc core.GenesisAlloc) error {
 	if len(masters) == 0 {
 		return nil
 	}
@@ -411,7 +415,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 		validatorCaps = append(validatorCaps, stakeCap)
 		signers = append(signers, masters[i].Address)
 	}
-	validatorAddress, _, err := validator.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
+	validatorAddress, _, err := validator.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, owner)
 	if err != nil {
 		log.Error("Can't DeployValidator", "err", err)
 		return err

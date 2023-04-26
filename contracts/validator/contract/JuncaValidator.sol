@@ -331,7 +331,7 @@ contract JuncaValidator {
             validatorsState[_candidates[i]].cap = _caps[i];
             validatorsState[_candidates[i]].voters[_firstOwner] = minCandidateCap;
             voters[_candidates[i]].push(_firstOwner);
-            validatorsState[_candidates[i]].voters[_firstOwner] = minCandidateCap;
+            //validatorsState[_candidates[i]].voters[_firstOwner] = minCandidateCap;
         }
     }
 
