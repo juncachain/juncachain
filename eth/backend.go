@@ -403,7 +403,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			)
 
 			// list sealers as M1(valid M1 list)
-			lastNumber := number - c.Config().Epoch
+			lastNumber := c.LastEpoch(number)
 			if lastNumber == 0 {
 				lastNumber = 1
 			}
@@ -426,6 +426,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 
+			// if the block signer isn't M2,remove it
+			lastEpoch, _ := c.GetEpoch(chain, c.LastEpoch(number))
+			if lastEpoch != nil {
+				for m2, _ := range m2s {
+					if !lastEpoch.IsM2(m2) {
+						delete(m2s, m2)
+					}
+				}
+			}
+
+			// generate m1 stat and voters stat
 			for sealer, count := range sealers {
 				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
 				voters := contracts.GetVotersFromState(stateBlock, sealer)
@@ -441,6 +452,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
+			// generate m2 stat
 			for signer, signCount := range m2s {
 				totalSignCount = totalSignCount + signCount
 				if st, ok := m2Stat[signer]; ok {
@@ -450,10 +462,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
+			// calc current epoch rewards
 			currentEpochRewards := c.CalcReward(number)
 			if currentEpochRewards.Cmp(big.NewInt(0)) == 0 {
 				return epoch, nil
 			}
+			rewards["total"] = currentEpochRewards
 
 			// calc and rewards to m1s
 			rewardM1 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM1Percent))
@@ -464,7 +478,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["m1"] = m1Stat
+			rewards["m1s"] = m1Stat
 
 			// calc and rewards to m2s
 			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
@@ -475,7 +489,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["m2"] = m2Stat
+			rewards["m2s"] = m2Stat
 
 			// calc and rewards to voters
 			rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
