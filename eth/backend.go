@@ -342,11 +342,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			if header.Number.Uint64()%c.Config().Epoch != 0 {
 				return nil, nil
 			}
-			begin := c.LastEpoch(header.Number.Uint64())
-			end := header.Number.Uint64() - 1
 
+			lastEpochNumber := c.LastEpoch(header.Number.Uint64())
+			currentNumber := header.Number.Uint64()
 			signCount := make(map[common.Address]int)
-			for i := begin; i <= end; i++ {
+			// (Checkpoint+1,NEXT Checkpoint]
+			for i := lastEpochNumber + 1; i <= currentNumber; i++ {
 				hd := chain.GetHeaderByNumber(i)
 				if hd != nil {
 					for _, v := range contracts.GetBlockSignersFromState(stateBlock, hd.Hash()) {
@@ -383,8 +384,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 
 		c.HookReward = func(chain consensus.ChainHeaderReader, stateBlock *state.StateDB, header *types.Header) (map[string]interface{}, error) {
-			number := header.Number.Uint64()
-			if number == 0 || number%c.Config().Epoch != 0 {
+			currentNumber := header.Number.Uint64()
+			if currentNumber == 0 || currentNumber%c.Config().Epoch != 0 {
 				return nil, nil
 			}
 			type Stat struct {
@@ -398,20 +399,21 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				m1Stat         = make(map[common.Address]*Stat)
 				m2Stat         = make(map[common.Address]*Stat)
 				voterStat      = make(map[common.Address]*Stat)
-				totalCap       = new(big.Int)
+				totalVoteCap   = new(big.Int)
 				totalSignCount int
 			)
 
+			lastEpochNumber := c.LastEpoch(currentNumber)
+			lastEpochHeader := chain.GetHeaderByNumber(lastEpochNumber)
+			var lastEpochExtra posv.Extra
+			_ = lastEpochExtra.FromBytes(lastEpochHeader.Extra)
+
 			// list sealers as M1(valid M1 list)
-			lastNumber := number - c.Config().Epoch
-			if lastNumber == 0 {
-				lastNumber = 1
-			}
 			var sealers = make(map[common.Address]int)
-			for i := number - 1; i >= lastNumber; i-- {
+			for i := lastEpochNumber + 1; i <= currentNumber; i++ {
 				hd := chain.GetHeaderByNumber(i)
 				if hd == nil {
-					return nil, errors.Errorf("header %d is nil", lastNumber+i)
+					return nil, errors.Errorf("header %d is nil", i)
 				}
 				sealer, err := c.Author(hd)
 				if err != nil {
@@ -419,33 +421,45 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 				sealers[sealer] = sealers[sealer] + 1
 			}
-			rewards["sealers"] = sealers
+			for sealer, _ := range sealers {
+				if !lastEpochExtra.Epoch.IsM1(sealer) {
+					delete(sealers, sealer)
+				}
+			}
 
 			// list block signers as M2(all M2)
 			m2s, err := c.HookGetBlockSigners(chain, stateBlock, header)
 			if err != nil {
 				return nil, err
 			}
-			rewards["signmiss"] = m2s
+			for signer, _ := range m2s {
+				// if signer is not M2,remove it
+				if !lastEpochExtra.Epoch.IsM2(signer) {
+					delete(m2s, signer)
+				}
+			}
 
-			for sealer, _ := range sealers {
-				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int), Reward: new(big.Int)}
+			// calc sealers && voters stat
+			for sealer, blocks := range sealers {
+				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int).SetInt64(int64(blocks)), Reward: new(big.Int)}
+
 				voters := contracts.GetVotersFromState(stateBlock, sealer)
 				for _, v := range voters {
 					if voterStat[v] == nil {
 						voterStat[v] = &Stat{Address: v, Cap: new(big.Int), Reward: new(big.Int)}
 					}
-					cap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
-					totalCap = new(big.Int).Add(totalCap, cap)
+					voteCap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
+					totalVoteCap = new(big.Int).Add(totalVoteCap, voteCap)
 					if st, ok := voterStat[v]; ok {
-						st.Cap = new(big.Int).Add(st.Cap, cap)
+						st.Cap = new(big.Int).Add(st.Cap, voteCap)
 					}
-					if st, ok := m1Stat[sealer]; ok {
-						st.Cap = new(big.Int).Add(st.Cap, cap)
-					}
+					//if st, ok := m1Stat[sealer]; ok {
+					//	st.Cap = new(big.Int).Add(st.Cap, cap)
+					//}
 				}
 			}
 
+			// calc signer stat
 			for signer, signCount := range m2s {
 				totalSignCount = totalSignCount + signCount
 				if st, ok := m2Stat[signer]; ok {
@@ -455,21 +469,23 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 			}
 
-			currentEpochRewards := c.CalcReward(number)
+			currentEpochRewards := c.CalcReward(currentNumber)
 			if currentEpochRewards.Cmp(big.NewInt(0)) == 0 {
 				return epoch, nil
 			}
+			rewards["total"] = currentEpochRewards
 
 			// calc and rewards to m1s
 			rewardM1 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM1Percent))
 			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
 			for _, v := range m1Stat {
-				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
+				sealBlocks := new(big.Int).SetInt64(int64(sealers[v.Address]))
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, sealBlocks), new(big.Int).SetUint64(c.Config().Epoch))
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["m1"] = m1Stat
+			rewards["sealers"] = m1Stat
 
 			// calc and rewards to m2s
 			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
@@ -480,13 +496,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["m2"] = m2Stat
+			rewards["signers"] = m2Stat
 
 			// calc and rewards to voters
 			rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
 			rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
 			for _, v := range voterStat {
-				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalVoteCap)
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
@@ -504,14 +520,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				stateBlock.AddBalance(c.Config().Foundation, rewardFoundation)
 			}
 
-			var extra posv.Extra
-			if err := extra.FromBytes(header.Extra); err != nil {
-				return nil, err
-			}
-			epoch["epoch"] = extra.Epoch
+			epoch["epoch"] = lastEpochExtra.Epoch
 			epoch["rewards"] = rewards
 			bz, _ := json.Marshal(epoch)
-			_ = chainDb.Put([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, number/c.Config().Epoch)), bz)
+			_ = chainDb.Put([]byte(fmt.Sprintf("%s-%d", common.EpochKeyPrefix, currentNumber/c.Config().Epoch)), bz)
 			return epoch, nil
 		}
 

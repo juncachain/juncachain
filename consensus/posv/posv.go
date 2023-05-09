@@ -22,8 +22,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -518,19 +518,22 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
-		log.Info("[PoSV]HookReward", "number", header.Number)
-		rewards, err := c.HookReward(chain, state, header)
+	if c.HookReward != nil && (header.Number.Uint64()-common.EpochBlockCheckWiggle)%c.config.Epoch == 0 {
+		lastHeader := chain.GetHeaderByNumber(header.Number.Uint64() - common.EpochBlockCheckWiggle)
+		log.Info("[PoSV]HookReward", "number", lastHeader.Number)
+		rewards, err := c.HookReward(chain, state, lastHeader)
 		if err != nil {
 			log.Crit("[PoSV]HookReward", "err", err)
 		}
 
-		data, err := json.MarshalIndent(rewards, "", "  ")
-		if err == nil {
-			err = ioutil.WriteFile(filepath.Join(c.config.InstanceDir, header.Number.String()+"_epoch.json"), data, 0644)
-		}
-		if err != nil {
-			log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
+		if rewards != nil {
+			data, err := json.MarshalIndent(rewards, "", "  ")
+			if err == nil {
+				err = os.WriteFile(filepath.Join(c.config.InstanceDir, lastHeader.Number.String()+"_epoch.json"), data, 0644)
+			}
+			if err != nil {
+				log.Error("Error when save reward info ", "number", lastHeader.Number, "hash", lastHeader.Hash().Hex(), "err", err)
+			}
 		}
 	}
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
@@ -785,7 +788,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 	}
 	epoch.M2s = m2s
 
-	newEpoch, err := c.penalty(chain, number-common.EpochBlockCheckWiggle, epoch)
+	newEpoch, err := c.penalty(chain, number, epoch)
 	if err != nil {
 		return nil, err
 	}
