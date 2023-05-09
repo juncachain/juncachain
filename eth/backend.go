@@ -419,17 +419,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				}
 				sealers[sealer] = sealers[sealer] + 1
 			}
-			rewards["sealers"] = sealers
 
 			// list block signers as M2(all M2)
 			m2s, err := c.HookGetBlockSigners(chain, stateBlock, header)
 			if err != nil {
 				return nil, err
 			}
-			rewards["signmiss"] = m2s
 
-			for sealer, _ := range sealers {
-				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int), Reward: new(big.Int)}
+			for sealer, count := range sealers {
+				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
 				voters := contracts.GetVotersFromState(stateBlock, sealer)
 				for _, v := range voters {
 					if voterStat[v] == nil {
@@ -438,9 +436,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					cap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
 					totalCap = new(big.Int).Add(totalCap, cap)
 					if st, ok := voterStat[v]; ok {
-						st.Cap = new(big.Int).Add(st.Cap, cap)
-					}
-					if st, ok := m1Stat[sealer]; ok {
 						st.Cap = new(big.Int).Add(st.Cap, cap)
 					}
 				}

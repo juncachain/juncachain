@@ -785,7 +785,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 	}
 	epoch.M2s = m2s
 
-	newEpoch, err := c.penalty(chain, number-common.EpochBlockCheckWiggle, epoch)
+	newEpoch, err := c.penalty(chain, number, epoch)
 	if err != nil {
 		return nil, err
 	}
