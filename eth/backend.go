@@ -471,7 +471,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["m1s"] = m1Stat
+			rewards["sealers"] = m1Stat
 
 			// Calc and rewards to blockSigners
 			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
@@ -482,7 +482,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
 			}
-			rewards["blockSigners"] = m2Stat
+			rewards["signers"] = m2Stat
 
 			// Calc and rewards to voters
 			rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
