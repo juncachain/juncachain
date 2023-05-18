@@ -347,13 +347,26 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, nil
 			}
 			lastCheckpoint := c.LastCheckpoint(header.Number.Uint64())
+			lastEpoch, err := c.GetEpoch(chain, lastCheckpoint)
+			if err != nil {
+				return nil, errors.Errorf("GetEpoch %d err %v", lastCheckpoint, err)
+			}
 
 			signCount := make(map[common.Address]int)
 			for i := lastCheckpoint + 1; i <= header.Number.Uint64(); i++ {
+				allowSigners := lastEpoch.M2(c.Config().Epoch, i)
+				allowMap := make(map[common.Address]bool)
+				for _, v := range allowSigners {
+					allowMap[v] = true
+				}
+
 				hd := chain.GetHeaderByNumber(i)
 				if hd != nil {
 					for _, v := range contracts.GetBlockSignersFromState(stateBlock, hd.Hash()) {
-						signCount[v] = signCount[v] + 1
+						// Exclude maliciously signed M2
+						if allowMap[v] {
+							signCount[v] = signCount[v] + 1
+						}
 					}
 				}
 			}
@@ -422,7 +435,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 
 			// if the block signer isn't M2,remove it
-			// TODO 在当前的设计下，需要下面的代码，后续合约里实现验证后，可以不要下面的代码
 			for m2, _ := range blockSigners {
 				if !lastEpoch.IsM2(m2) {
 					delete(blockSigners, m2)

@@ -424,8 +424,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 
-	// Signer cannot sign the block before time(calc by timeout)
-	// TODO 需要验证是否该signer出块，包括超时出块，以防止节点作恶抢先出块
+	// Signer Prevent Signer from preempting blocks
 	if parent := chain.GetHeaderByNumber(number - 1); parent != nil {
 		nextSealBlock := epoch.M1NextTurn(c.config.Epoch, number, signer)
 		nextSealTime := parent.Time + (nextSealBlock-number)*c.config.Period
@@ -524,7 +523,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		}
 	}
 
-	// Sign parent TODO 需要在合约里植入epoch数据，限制为只能该签名的M2才能签，避免M2修改代码进行随意签署
+	// Sign parent block
 	if c.HookBlockSign != nil && epoch.IsM2(signer) {
 		if m2s := epoch.M2(c.config.Epoch, parent.Number.Uint64()); len(m2s) > 0 {
 			for _, m2 := range m2s {
