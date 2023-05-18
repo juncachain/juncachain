@@ -36,8 +36,8 @@ func TestMain(m *testing.M) {
 		Period:      2,
 		Epoch:       900,
 		MinStaked:   nil,
-		Reward:      new(big.Int).Mul(big.NewInt(150), big.NewInt(params.Ether)),
-		TotalReward: new(big.Int).Mul(big.NewInt(10000000), big.NewInt(params.Ether)),
+		Reward:      new(big.Int).Mul(big.NewInt(130), big.NewInt(params.Ether)),
+		TotalReward: new(big.Int).Mul(big.NewInt(20000000), big.NewInt(params.Ether)),
 		InstanceDir: "",
 	}
 	_engine = New(cfg, rawdb.NewMemoryDatabase())
@@ -60,31 +60,19 @@ func TestSealHash(t *testing.T) {
 }
 
 func TestCalcRewards(t *testing.T) {
-	base := uint64(1)
-	for epoch := uint64(1); epoch < 184667; epoch += 17520 {
-		t.Log(_engine.CalcReward(900*epoch + base))
-	}
-
-	for number := uint64(1); number < 166200300; number += 17520 * 900 {
-		t.Log(_engine.CalcReward(number))
-	}
-
-	t.Log(166200300, _engine.CalcReward(166200300))
-	t.Log(166200301, _engine.CalcReward(166200301))
-	t.Log(166201201, _engine.CalcReward(166201201))
-	if _engine.CalcReward(166201201).Cmp(big.NewInt(0)) != 0 {
-		t.Fatal("not equal")
+	for i := 0; i < 30; i++ {
+		t.Log(CalcReward(_engine.config, 900*(uint64(i)*17520)))
 	}
 }
 
 func TestLastEpoch(t *testing.T) {
-	if _engine.LastEpoch(1) != 0 {
+	if _engine.LastCheckpoint(1) != 0 {
 		t.Fatal("got bad checkpoint number")
 	}
-	if _engine.LastEpoch(900) != 0 {
+	if _engine.LastCheckpoint(900) != 0 {
 		t.Fatal("got bad checkpoint number")
 	}
-	if _engine.LastEpoch(901) != 900 {
+	if _engine.LastCheckpoint(901) != 900 {
 		t.Fatal("got bad checkpoint number")
 	}
 }

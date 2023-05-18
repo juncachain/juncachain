@@ -18,6 +18,7 @@ package posv
 import (
 	"bytes"
 	"math/big"
+	"sort"
 	"testing"
 
 	"github.com/juncachain/juncachain/common"
@@ -83,9 +84,17 @@ func TestM1(t *testing.T) {
 
 	for i := 1; i <= 20; i++ {
 		m1 := epoch.M1(9, uint64(i))
+		nextSealBlock := epoch.M1NextTurn(9, uint64(i), m1)
+		t.Log("Number:", i, " M1:", m1, " nextSealBlock:", nextSealBlock)
 		if m1 != epoch.M1s[(i-1)%epoch.M1Length()].Address {
 			t.Fatal("not in order")
 		}
+	}
+
+	for i := 1; i < 20; i++ {
+		m1 := common.BigToAddress(new(big.Int).SetInt64(1))
+		nextSealBlock := epoch.M1NextTurn(9, uint64(i), m1)
+		t.Log("Number:", i, " M1:", m1, " nextSealBlock:", nextSealBlock)
 	}
 }
 
@@ -106,6 +115,49 @@ func TestM2(t *testing.T) {
 		}
 		if m2s[1] != epoch.M2s[(i+1)%epoch.M2Length()] {
 			t.Fatal("The second M2 not in order")
+		}
+	}
+}
+
+func TestSortMasterNodes(t *testing.T) {
+	var masternodes MasterNodes
+	masternodes = append(masternodes, MasterNode{
+		Address: common.BigToAddress(big.NewInt(1)),
+		Stake:   big.NewInt(1),
+	})
+	masternodes = append(masternodes, MasterNode{
+		Address: common.BigToAddress(big.NewInt(3)),
+		Stake:   big.NewInt(3),
+	})
+	masternodes = append(masternodes, MasterNode{
+		Address: common.BigToAddress(big.NewInt(2)),
+		Stake:   big.NewInt(2),
+	})
+	masternodes = append(masternodes, MasterNode{
+		Address: common.BigToAddress(big.NewInt(5)),
+		Stake:   big.NewInt(5),
+	})
+	masternodes = append(masternodes, MasterNode{
+		Address: common.BigToAddress(big.NewInt(4)),
+		Stake:   big.NewInt(5),
+	})
+	sort.Sort(masternodes)
+	for i, v := range masternodes {
+		t.Log(v.Address, v.Stake)
+		if i == 0 && v.Address != common.BigToAddress(big.NewInt(4)) {
+			t.Fatal("sort failed")
+		}
+		if i == 1 && v.Address != common.BigToAddress(big.NewInt(5)) {
+			t.Fatal("sort failed")
+		}
+		if i == 2 && v.Address != common.BigToAddress(big.NewInt(3)) {
+			t.Fatal("sort failed")
+		}
+		if i == 3 && v.Address != common.BigToAddress(big.NewInt(2)) {
+			t.Fatal("sort failed")
+		}
+		if i == 4 && v.Address != common.BigToAddress(big.NewInt(1)) {
+			t.Fatal("sort failed")
 		}
 	}
 }
