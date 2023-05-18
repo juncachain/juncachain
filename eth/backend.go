@@ -353,7 +353,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			}
 
 			signCount := make(map[common.Address]int)
-			for i := lastCheckpoint + 1; i <= header.Number.Uint64(); i++ {
+			for i := lastCheckpoint + 1; i < header.Number.Uint64(); i++ {
 				allowSigners := lastEpoch.M2(c.Config().Epoch, i)
 				allowMap := make(map[common.Address]bool)
 				for _, v := range allowSigners {
@@ -399,13 +399,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				Reward  *big.Int       `json:"reward"`
 			}
 			var (
-				epochStat      = make(map[string]interface{})
-				rewards        = make(map[string]interface{})
-				m1Stat         = make(map[common.Address]*Stat)
-				m2Stat         = make(map[common.Address]*Stat)
-				voterStat      = make(map[common.Address]*Stat)
-				totalCap       = new(big.Int)
-				totalSignCount int
+				epochStat         = make(map[string]interface{})
+				rewards           = make(map[string]interface{})
+				m1Stat            = make(map[common.Address]*Stat)
+				m2Stat            = make(map[common.Address]*Stat)
+				voterStat         = make(map[common.Address]*Stat)
+				totalCap          = new(big.Int)
+				totalSignedBlocks int
+				totalSealedBlocks int
 			)
 
 			// Get last Epoch
@@ -417,7 +418,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 			// List sealers as M1(valid M1 list)
 			var sealers = make(map[common.Address]int)
-			for i := lastCheckpoint + 1; i <= number; i++ {
+			for i := lastCheckpoint + 1; i < number; i++ {
 				hd := chain.GetHeaderByNumber(i)
 				if hd != nil {
 					sealer, err := c.Author(hd)
@@ -443,6 +444,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 			// Generate m1 stat and voters stat
 			for sealer, count := range sealers {
+				totalSealedBlocks += count
 				m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
 				voters := contracts.GetVotersFromState(stateBlock, sealer)
 				for _, v := range voters {
@@ -459,7 +461,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 			// Generate m2 stat
 			for signer, signCount := range blockSigners {
-				totalSignCount = totalSignCount + signCount
+				totalSignedBlocks = totalSignedBlocks + signCount
 				if st, ok := m2Stat[signer]; ok {
 					st.Cap = new(big.Int).Add(st.Cap, big.NewInt(int64(signCount)))
 				} else {
@@ -478,7 +480,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rewardM1 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM1Percent))
 			rewardM1 = new(big.Int).Div(rewardM1, new(big.Int).SetInt64(100))
 			for _, v := range m1Stat {
-				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), totalCap)
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), new(big.Int).SetUint64(uint64(totalSealedBlocks)))
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
@@ -489,7 +491,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rewardM2 := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardM2Percent))
 			rewardM2 = new(big.Int).Div(rewardM2, new(big.Int).SetInt64(100))
 			for _, v := range m2Stat {
-				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignCount)))
+				v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignedBlocks)))
 				if v.Reward.Cmp(new(big.Int)) > 0 {
 					stateBlock.AddBalance(v.Address, v.Reward)
 				}
