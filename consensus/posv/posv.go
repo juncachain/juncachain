@@ -812,6 +812,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 		epoch.Penalties[i] = v
 		log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
 	}
+
 	penalized := func(address common.Address) bool {
 		for _, v := range penalties {
 			if v == address {
@@ -819,6 +820,12 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 			}
 		}
 		return false
+	}
+	// If all candidates are penalied,penaly nothing
+	if len(candidates)-len(penalties) == 0 {
+		penalized = func(address common.Address) bool {
+			return false
+		}
 	}
 
 	// Max 150 masterNodes
