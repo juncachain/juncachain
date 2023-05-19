@@ -415,7 +415,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	// Signer cannot sign two consecutive blocks unless
 	// it's your turn or the block is the first in an epoch
 	if number%c.config.Epoch != 1 {
-		if parent := chain.GetHeaderByNumber(number - 1); parent != nil {
+		if parent := chain.GetHeader(header.ParentHash, number-1); parent != nil {
 			if lastSigner, err := ecrecover(parent, c.signatures); err != nil {
 				return err
 			} else if lastSigner == signer {
@@ -425,7 +425,7 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// Signer Prevent Signer from preempting blocks
-	if parent := chain.GetHeaderByNumber(number - 1); parent != nil && epoch != nil {
+	if parent := chain.GetHeader(header.ParentHash, number-1); parent != nil && epoch != nil {
 		nextSealBlock := epoch.M1NextTurn(c.config.Epoch, number, signer)
 		nextSealTime := parent.Time + (nextSealBlock-number)*c.config.Period
 		if header.Time < nextSealTime {
