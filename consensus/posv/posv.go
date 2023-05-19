@@ -364,6 +364,7 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 		if len(extra.Epoch.M1s) == 0 || len(extra.Epoch.M2s) == 0 {
 			return errMismatchingCheckpointSigners
 		}
+		// makeEpoch may be return nil and error when synchronizing blocks
 		if newEpoch, _ := c.makeEpoch(chain, number); newEpoch != nil &&
 			!bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
 			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), newEpoch.String())
