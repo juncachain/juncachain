@@ -229,7 +229,7 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Info("----------VerifyHeaders", "number", headers[0].Number.Uint64())
+	log.Info("----------VerifyHeaders", "begin number", headers[0].Number.Uint64(), "end number", headers[len(headers)-1].Number.Uint64())
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -262,7 +262,7 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
 	}
-	// Coinbase must be M1
+	// Coinbase must be M1. epoch may be nil when sync mode
 	epoch, _ := c.getEpoch(chain, c.LastCheckpoint(number))
 	if epoch != nil && !epoch.IsM1(header.Coinbase) {
 		return errInvalidCheckpointBeneficiary
@@ -403,12 +403,12 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// Signer must be M1
-	if !epoch.IsM1(signer) {
+	if epoch != nil && !epoch.IsM1(signer) {
 		return errUnauthorizedSigner
 	}
 
 	// It's turn to signer seal
-	if epoch.M1(c.config.Epoch, number) == signer {
+	if epoch != nil && epoch.M1(c.config.Epoch, number) == signer {
 		return nil
 	}
 
@@ -425,11 +425,11 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// Signer Prevent Signer from preempting blocks
-	if parent := chain.GetHeaderByNumber(number - 1); parent != nil {
+	if parent := chain.GetHeaderByNumber(number - 1); parent != nil && epoch != nil {
 		nextSealBlock := epoch.M1NextTurn(c.config.Epoch, number, signer)
 		nextSealTime := parent.Time + (nextSealBlock-number)*c.config.Period
-		if nextSealTime < header.Time {
-			return errRecentlySigned
+		if header.Time < nextSealTime {
+			return errors.New("signed timeout not reached")
 		}
 	}
 
@@ -796,7 +796,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, number uint64) (*Epo
 	// Must shift block. number may be not sealed
 	candidates, err := c.HookCandidates(number - 1)
 	if err != nil {
-		log.Error("[PoSV]HookCandidates", "err", err)
+		log.Error("[PoSV]HookCandidates", "err", err, "number", number)
 		return nil, err
 	}
 
