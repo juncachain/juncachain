@@ -262,8 +262,13 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
 	}
-	// Coinbase must be M1. epoch may be nil when sync mode
-	epoch, _ := c.getEpoch(chain, c.LastCheckpoint(number))
+	// Coinbase must be M1
+	// getEpoch may be return nil and error when synchronizing blocks
+	// The next time you sync to number, you can getEpoch correctly
+	epoch, err := c.getEpoch(chain, c.LastCheckpoint(number))
+	if epoch == nil || err != nil {
+		return errors.Errorf("Got a nil epoch at %d err %v", number, err)
+	}
 	if epoch != nil && !epoch.IsM1(header.Coinbase) {
 		return errInvalidCheckpointBeneficiary
 	}
@@ -365,9 +370,13 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 			return errMismatchingCheckpointSigners
 		}
 		// makeEpoch may be return nil and error when synchronizing blocks
-		if newEpoch, _ := c.makeEpoch(chain, number); newEpoch != nil &&
+		if newEpoch, err := c.makeEpoch(chain, number); newEpoch != nil &&
 			!bytes.Equal(newEpoch.ToBytes(), extra.Epoch.ToBytes()) {
 			return fmt.Errorf("invalid epoch before fork: have %s, want %s", extra.Epoch.String(), newEpoch.String())
+		} else if err != nil {
+			// If return an error,the synchronizer first writes the block before number into the blockchain
+			// The next time you sync to number, you can makeEpoch correctly
+			return errors.Errorf("Make a nil epoch at %d err %+v", number, err)
 		}
 	}
 	// All basic checks passed, verify the seal and return
