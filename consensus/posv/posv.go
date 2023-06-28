@@ -211,7 +211,6 @@ func (c *PoSV) Author(header *types.Header) (common.Address, error) {
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
-	log.Info("----------VerifyHeader", "number", header.Number.Uint64())
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -219,7 +218,6 @@ func (c *PoSV) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *PoSV) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, seals []bool) (chan<- struct{}, <-chan error) {
-	log.Info("----------VerifyHeaders", "begin number", headers[0].Number.Uint64(), "end number", headers[len(headers)-1].Number.Uint64())
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -376,7 +374,6 @@ func (c *PoSV) verifyCascadingFields(chain consensus.ChainHeaderReader, header *
 // VerifyUncles implements consensus.Engine, always returning an error for any
 // uncles as this consensus mechanism doesn't permit uncles.
 func (c *PoSV) VerifyUncles(chain consensus.ChainReader, block *types.Block) error {
-	log.Info("----------VerifyUncles", "number", block.Number().Uint64())
 	if len(block.Uncles()) > 0 {
 		return errors.New("uncles not allowed")
 	}
@@ -439,7 +436,6 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	log.Info("----------Prepare", "number", header.Number.Uint64())
 	// If the block isn't a isCheckpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
@@ -543,8 +539,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	log.Info("----------Finalize", "number", header.Number.Uint64(), "txs", len(txs))
-
 	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
 		number := header.Number.Uint64()
 		{
@@ -583,7 +577,6 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (c *PoSV) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	log.Info("----------FinalizeAndAssemble", "number", header.Number.Uint64(), "txs", len(txs))
 	// Finalize block
 	c.Finalize(chain, header, state, txs, uncles)
 
@@ -604,7 +597,6 @@ func (c *PoSV) Authorize(signer common.Address, signFn SignerFn) {
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
-	log.Info("----------Seal", "number", block.Number().Uint64(), "txs", len(block.Transactions()))
 	header := block.Header()
 
 	// Sealing the genesis block is not supported
@@ -687,7 +679,6 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 // * DIFF_NOTURN(2) if BLOCK_NUMBER % SIGNER_COUNT != SIGNER_INDEX
 // * DIFF_INTURN(1) if BLOCK_NUMBER % SIGNER_COUNT == SIGNER_INDEX
 func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	log.Info("----------CalcDifficulty", "number", parent.Number.Uint64())
 	c.lock.RLock()
 	signer := c.signer
 	c.lock.RUnlock()
@@ -700,7 +691,6 @@ func (c *PoSV) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, pa
 
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *PoSV) SealHash(header *types.Header) common.Hash {
-	log.Info("----------CalcDifficulty", "number", header.Number.Uint64())
 	return SealHash(header)
 }
 
