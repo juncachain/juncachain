@@ -140,12 +140,12 @@ func (w *wizard) makeGenesis() {
 		genesis.Config.Posv.MinStaked = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(50000))), big.NewInt(params.Ether))
 
 		fmt.Println()
-		fmt.Println("How many Ethers should be rewarded to masternode first epoch? (default = 1,500)")
-		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(1500))), big.NewInt(params.Ether))
+		fmt.Println("How many Ethers should be rewarded to masternode first epoch? (default = 130)")
+		genesis.Config.Posv.Reward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(130))), big.NewInt(params.Ether))
 
 		fmt.Println()
-		fmt.Println("How many total Ethers should be rewarded to masternode? (default = 100,000,000)")
-		genesis.Config.Posv.TotalReward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(100000000))), big.NewInt(params.Ether))
+		fmt.Println("How many total Ethers should be rewarded to staking? (default = 20,000,000)")
+		genesis.Config.Posv.TotalReward = new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(20000000))), big.NewInt(params.Ether))
 
 		fmt.Println()
 		fmt.Println("What is foundation wallet address?")
@@ -154,6 +154,10 @@ func (w *wizard) makeGenesis() {
 		fmt.Println()
 		fmt.Println("What is Juncaswap administrator wallet address?")
 		genesis.Config.Posv.JuncaswapAdmin = *w.readAddress()
+
+		fmt.Println()
+		fmt.Println("Who own the first masternodes? (mandatory)")
+		owner := *w.readAddress()
 
 		// We also need the initial list of signers
 		fmt.Println()
@@ -175,7 +179,7 @@ func (w *wizard) makeGenesis() {
 		sort.Sort(signers)
 		var extra posv.Extra
 		extra.Epoch.Checkpoint = 0
-		extra.Epoch.Reward = new(big.Int)
+		extra.Epoch.Reward = posv.CalcReward(genesis.Config.Posv, 0)
 		for _, v := range signers {
 			extra.Epoch.M1s = append(extra.Epoch.M1s, posv.MasterNode{
 				Address: v.Address,
@@ -187,7 +191,7 @@ func (w *wizard) makeGenesis() {
 		genesis.ExtraData = make([]byte, len(b))
 		copy(genesis.ExtraData, b)
 
-		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, genesis.Alloc); err != nil {
+		if err := deployValidatorContract(signers, genesis.Config.Posv.MinStaked, owner, genesis.Alloc); err != nil {
 			log.Crit("Error on deployValidatorContract", "err", err)
 		}
 		if err := deployBlockSignerContract(genesis.Config.Posv.Epoch, genesis.Alloc); err != nil {
@@ -216,6 +220,10 @@ func (w *wizard) makeGenesis() {
 	default:
 		log.Crit("Invalid consensus engine choice", "choice", choice)
 	}
+	fmt.Println()
+	fmt.Println("How many total Ethers should be pre-funded? (default = 9,000,000)")
+	preFund := new(big.Int).Mul(big.NewInt(int64(w.readDefaultInt(9000000))), big.NewInt(params.Ether))
+
 	// Consensus all set, just ask for initial funds and go
 	fmt.Println()
 	fmt.Println("Which accounts should be pre-funded? (advisable at least one)")
@@ -223,7 +231,7 @@ func (w *wizard) makeGenesis() {
 		// Read the address of the account to fund
 		if address := w.readAddress(); address != nil {
 			genesis.Alloc[*address] = core.GenesisAccount{
-				Balance: new(big.Int).Lsh(big.NewInt(1), 256-7), // 2^256 / 128 (allow many pre-funds without balance overflows)
+				Balance: preFund,
 			}
 			continue
 		}
@@ -393,7 +401,7 @@ func (w *wizard) manageGenesis() {
 	}
 }
 
-func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesisAlloc core.GenesisAlloc) error {
+func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, owner common.Address, genesisAlloc core.GenesisAlloc) error {
 	if len(masters) == 0 {
 		return nil
 	}
@@ -411,7 +419,7 @@ func deployValidatorContract(masters posv.MasterNodes, stakeCap *big.Int, genesi
 		validatorCaps = append(validatorCaps, stakeCap)
 		signers = append(signers, masters[i].Address)
 	}
-	validatorAddress, _, err := validator.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, signers[0])
+	validatorAddress, _, err := validator.DeployValidator(transactOpts, contractBackend, signers, validatorCaps, owner)
 	if err != nil {
 		log.Error("Can't DeployValidator", "err", err)
 		return err

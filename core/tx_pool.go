@@ -269,7 +269,6 @@ type TxPool struct {
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
 
-	IsSigner func(address common.Address) bool
 }
 
 type txpoolResetRequest struct {

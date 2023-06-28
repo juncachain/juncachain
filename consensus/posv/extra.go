@@ -38,10 +38,15 @@ func (ms MasterNodes) Len() int {
 }
 
 func (ms MasterNodes) Less(i, j int) bool {
-	if ms[i].Stake.Cmp(ms[i].Stake) > 0 {
+	cmp := ms[i].Stake.Cmp(ms[j].Stake)
+	if cmp > 0 {
 		return true
 	}
-	return bytes.Compare(ms[i].Address[:], ms[j].Address[:]) > 0
+
+	if cmp == 0 && bytes.Compare(ms[i].Address[:], ms[j].Address[:]) < 0 {
+		return true
+	}
+	return false
 }
 
 func (ms MasterNodes) Swap(i, j int) {

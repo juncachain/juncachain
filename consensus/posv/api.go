@@ -48,7 +48,7 @@ func (api *API) GetSigners(number *rpc.BlockNumber) ([]common.Address, error) {
 	if header == nil {
 		return nil, errUnknownBlock
 	}
-	lastCheckpoint := api.posv.LastEpoch(header.Number.Uint64())
+	lastCheckpoint := api.posv.LastCheckpoint(header.Number.Uint64())
 	var extra Extra
 	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func (api *API) GetSignersAtHash(hash common.Hash) ([]common.Address, error) {
 		return nil, errUnknownBlock
 	}
 
-	lastCheckpoint := api.posv.LastEpoch(header.Number.Uint64())
+	lastCheckpoint := api.posv.LastCheckpoint(header.Number.Uint64())
 	var extra Extra
 	if err := extra.FromBytes(api.chain.GetHeaderByNumber(lastCheckpoint).Extra); err != nil {
 		return nil, err
