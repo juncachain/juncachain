@@ -22,6 +22,7 @@ import (
 	cryptoRand "crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/juncachain/juncachain/core/state"
 	"io"
 	"math/big"
 	"math/rand"
@@ -60,7 +61,7 @@ func etherbaseWallet(manager *accounts.Manager, etherbase common.Address) accoun
 }
 
 // CreateTransactionSign Send tx sign for block number to smart contract blockSigner.
-func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, eb common.Address, toSign, header *types.Header) error {
+func CreateTransactionSign(chainID *big.Int, pool *core.TxPool, manager *accounts.Manager, eb common.Address, toSign, header *types.Header) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
@@ -76,7 +77,7 @@ func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, m
 	}
 	gasPrice := new(big.Int).Add(baseFee, big.NewInt(1))
 	tx := BuildTxSignBlockSigner(toSign.Number, toSign.Hash(), nonce, gasPrice, common.HexToAddress(common.BlockSignerSMC))
-	txSigned, err := wallet.SignTx(accounts.Account{Address: eb}, tx, chainConfig.ChainID)
+	txSigned, err := wallet.SignTx(accounts.Account{Address: eb}, tx, chainID)
 	if err != nil {
 		log.Error("Fail to create tx sign", "error", err)
 		return err
@@ -91,7 +92,7 @@ func CreateTransactionSign(chainConfig *params.ChainConfig, pool *core.TxPool, m
 }
 
 // CreateTransactionSetSecret Send tx set secret to smart contract randomize.
-func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address) error {
+func CreateTransactionSetSecret(chainID *big.Int, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address, epochLength uint64) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
@@ -116,12 +117,12 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 		baseFee = new(big.Int).SetUint64(params.InitialBaseFee)
 	}
 	gasPrice := new(big.Int).Add(baseFee, big.NewInt(1))
-	tx, err := BuildTxSecretRandomize(nonce, gasPrice, common.HexToAddress(common.RandomizeSMC), chainConfig.Posv.Epoch, randomizeKeyValue)
+	tx, err := BuildTxSecretRandomize(nonce, gasPrice, common.HexToAddress(common.RandomizeSMC), epochLength, randomizeKeyValue)
 	if err != nil {
 		log.Error("Fail to get tx secret for randomize", "error", err)
 		return err
 	}
-	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainConfig.ChainID)
+	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainID)
 	if err != nil {
 		log.Error("Fail to create tx secret", "error", err)
 		return err
@@ -139,7 +140,7 @@ func CreateTransactionSetSecret(chainConfig *params.ChainConfig, pool *core.TxPo
 }
 
 // CreateTransactionSetOpening Send tx set opening to smart contract randomize.
-func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address) error {
+func CreateTransactionSetOpening(chainID *big.Int, pool *core.TxPool, manager *accounts.Manager, header *types.Header, chainDb ethdb.Database, signer common.Address) error {
 	txMutex.Lock()
 	defer txMutex.Unlock()
 
@@ -166,7 +167,7 @@ func CreateTransactionSetOpening(chainConfig *params.ChainConfig, pool *core.TxP
 		log.Error("Fail to get tx opening for randomize", "error", err)
 		return err
 	}
-	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainConfig.ChainID)
+	txSigned, err := wallet.SignTx(accounts.Account{Address: signer}, tx, chainID)
 	if err != nil {
 		log.Error("Fail to create tx opening", "error", err)
 		return err
@@ -288,6 +289,12 @@ func GetRandomizeFromContract(client bind.ContractBackend, addrMasternode common
 		log.Error("Fail get opening from randomize", "error", err)
 	}
 
+	return DecryptRandomizeFromSecretsAndOpening(secrets, opening)
+}
+
+func GetRandomizeFromStateDB(statedb *state.StateDB, address common.Address) (int64, error) {
+	secrets := GetSecretFromState(statedb, address)
+	opening := GetOpeningFromState(statedb, address)
 	return DecryptRandomizeFromSecretsAndOpening(secrets, opening)
 }
 

@@ -33,8 +33,6 @@ const (
 	MaxSigners              = 99
 	EpochBlockSecret        = 30
 	EpochBlockOpening       = 20
-	EpochBlockSignWiggle    = 1       // Delay sign the block
-	EpochBlockCheckWiggle   = 8       // Based on confirmed block data
 	EpochBlockSealMissAllow = 2       // Allow miss seal the blocks each epoch
 	BuildInTxGas            = 1 << 18 // Fixed gas 262144
 )

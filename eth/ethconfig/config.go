@@ -226,7 +226,9 @@ func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, co
 	} else if chainConfig.Posv != nil {
 		chainConfig.Posv.InstanceDir = stack.InstanceDir()
 		engine = posv.New(chainConfig.Posv, db)
-		engine.(*posv.PoSV).SetIPCEndpoint(stack.IPCEndpoint())
+		engine.(*posv.PoSV).SetChainID(chainConfig.ChainID)
+		engine.(*posv.PoSV).SetAccountManager(stack.AccountManager())
+		engine.(*posv.PoSV).SetTxPool(nil)
 	} else {
 		switch config.PowMode {
 		case ethash.ModeFake:
