@@ -194,6 +194,13 @@ func New(config *params.PoSVConfig, db ethdb.Database) *PoSV {
 	signatures, _ := lru.NewARC(inmemorySignatures)
 	epochs, _ := lru.NewARC(inmemoryEpochs)
 
+	// create epoch dir
+	epochPath := filepath.Join(config.InstanceDir, "epoch")
+	if _, err := os.Stat(epochPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(epochPath, 0755); err != nil {
+			panic(err)
+		}
+	}
 	return &PoSV{
 		config:     &conf,
 		db:         db,
@@ -561,7 +568,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 
 			data, err := json.MarshalIndent(rewards, "", "  ")
 			if err == nil {
-				err = os.WriteFile(filepath.Join(c.config.InstanceDir, header.Number.String()+"_epoch.json"), data, 0644)
+				err = os.WriteFile(filepath.Join(c.config.InstanceDir, "epoch", header.Number.String()+"_epoch.json"), data, 0644)
 			}
 			if err != nil {
 				log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
