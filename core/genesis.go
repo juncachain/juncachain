@@ -357,6 +357,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return params.GoerliChainConfig
 	case ghash == params.KilnGenesisHash:
 		return DefaultKilnGenesisBlock().Config
+	case ghash == params.JuncaTestGenesisHash:
+		return params.JuncaTestnetChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}

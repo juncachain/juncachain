@@ -184,11 +184,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	for _, v := range m1Stat {
 		v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), new(big.Int).SetUint64(uint64(totalSealedBlocks)))
 		if v.Reward.Cmp(new(big.Int)) > 0 {
-			if chain.Config().ChainID.Cmp(big.NewInt(667)) == 0 || chain.Config().IsJuncatFix1(header.Number) {
-				stateBlock.AddBalance(v.Owner, v.Reward)
-			} else {
-				stateBlock.AddBalance(v.Owner, v.Reward)
-			}
+			stateBlock.AddBalance(v.Owner, v.Reward)
 		}
 	}
 	rewards["sealers"] = m1Stat
@@ -199,11 +195,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	for _, v := range m2Stat {
 		v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignedBlocks)))
 		if v.Reward.Cmp(new(big.Int)) > 0 {
-			if chain.Config().ChainID.Cmp(big.NewInt(667)) == 0 || chain.Config().IsJuncatFix1(header.Number) {
-				stateBlock.AddBalance(v.Owner, v.Reward)
-			} else {
-				stateBlock.AddBalance(v.Owner, v.Reward)
-			}
+			stateBlock.AddBalance(v.Owner, v.Reward)
 		}
 	}
 	rewards["signers"] = m2Stat
