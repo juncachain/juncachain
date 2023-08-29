@@ -94,6 +94,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	}
 	type Stat struct {
 		Address common.Address `json:"address"`
+		Owner   common.Address `json:"owner"` // for candidate
 		Cap     *big.Int       `json:"cap"`
 		Reward  *big.Int       `json:"reward"`
 	}
@@ -144,7 +145,8 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	// Generate m1 stat and voters stat
 	for sealer, count := range sealers {
 		totalSealedBlocks += count
-		m1Stat[sealer] = &Stat{Address: sealer, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
+		owner := contracts.GetCandidateOwnerFromState(stateBlock, sealer)
+		m1Stat[sealer] = &Stat{Address: sealer, Owner: owner, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
 		voters := contracts.GetVotersFromState(stateBlock, sealer)
 		for _, v := range voters {
 			if voterStat[v] == nil {
@@ -164,7 +166,8 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 		if st, ok := m2Stat[signer]; ok {
 			st.Cap = new(big.Int).Add(st.Cap, big.NewInt(int64(signCount)))
 		} else {
-			m2Stat[signer] = &Stat{Address: signer, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
+			owner := contracts.GetCandidateOwnerFromState(stateBlock, signer)
+			m2Stat[signer] = &Stat{Address: signer, Owner: owner, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
 		}
 	}
 
@@ -181,7 +184,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	for _, v := range m1Stat {
 		v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM1, v.Cap), new(big.Int).SetUint64(uint64(totalSealedBlocks)))
 		if v.Reward.Cmp(new(big.Int)) > 0 {
-			stateBlock.AddBalance(v.Address, v.Reward)
+			stateBlock.AddBalance(v.Owner, v.Reward)
 		}
 	}
 	rewards["sealers"] = m1Stat
@@ -192,7 +195,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	for _, v := range m2Stat {
 		v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardM2, v.Cap), new(big.Int).SetInt64(int64(totalSignedBlocks)))
 		if v.Reward.Cmp(new(big.Int)) > 0 {
-			stateBlock.AddBalance(v.Address, v.Reward)
+			stateBlock.AddBalance(v.Owner, v.Reward)
 		}
 	}
 	rewards["signers"] = m2Stat
