@@ -36,7 +36,7 @@ var (
 	GoerliGenesisHash    = common.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
 	KilnGenesisHash      = common.HexToHash("0x51c7fe41be669f69c45c33a56982cbde405313342d9e2b00d7c91a7b284dd4f8")
 	JuncaTestGenesisHash = common.HexToHash("0x6648cd131515e04b306909322ca60e3d5d2e356ec559d8566ab4b5f13e889236")
-	JuncaGenesisHash     = common.HexToHash("0x0f9e831514b4a031036d0f5c0706e5273171e363a888957d2740980cfd80c2f7")
+	JuncaGenesisHash     = common.HexToHash("0xbbd912bb3d6e11b42308ddc4773275a503e0effadd57afc419bb8b69a0cce067")
 )
 
 // TrustedCheckpoints associates each known checkpoint with the genesis hash of
