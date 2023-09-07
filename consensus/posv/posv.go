@@ -260,10 +260,10 @@ func (c *PoSV) verifyHeader(chain consensus.ChainHeaderReader, header *types.Hea
 	// Coinbase must be M1
 	// getEpoch may be return nil and error when synchronizing blocks
 	// The next time you sync to number, you can getEpoch correctly
-	epoch, err := c.getEpoch(chain, c.LastCheckpoint(number))
-	if epoch == nil || err != nil {
-		return errors.Errorf("Got a nil epoch at %d, err %v", number, err)
-	}
+	epoch, _ := c.getEpoch(chain, c.LastCheckpoint(number))
+	//if epoch == nil || err != nil {
+	//	return errors.Errorf("Got a nil epoch at %d, err %v", number, err)
+	//}
 	if epoch != nil && !epoch.IsM1(header.Coinbase) {
 		return errInvalidCheckpointBeneficiary
 	}
