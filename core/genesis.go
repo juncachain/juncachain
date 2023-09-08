@@ -517,6 +517,26 @@ func DefaultKilnGenesisBlock() *Genesis {
 	return g
 }
 
+// DefaultJuncaTestnetGenesisBlock returns the Junca Testnet network genesis block.
+func DefaultJuncaTestnetGenesisBlock() *Genesis {
+	g := new(Genesis)
+	reader := strings.NewReader(JuncaTestnetAllocData)
+	if err := json.NewDecoder(reader).Decode(g); err != nil {
+		panic(err)
+	}
+	return g
+}
+
+// DefaultJuncaGenesisBlock returns the Junca network genesis block.
+func DefaultJuncaGenesisBlock() *Genesis {
+	g := new(Genesis)
+	reader := strings.NewReader(JuncaAllocData)
+	if err := json.NewDecoder(reader).Decode(g); err != nil {
+		panic(err)
+	}
+	return g
+}
+
 // DeveloperGenesisBlock returns the 'geth --dev' genesis block.
 func DeveloperGenesisBlock(period uint64, gasLimit uint64, faucet common.Address) *Genesis {
 	// Override the default period to the user requested one

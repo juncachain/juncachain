@@ -153,7 +153,16 @@ var (
 		Usage:    "Kiln network: pre-configured proof-of-work to proof-of-stake test network",
 		Category: flags.EthCategory,
 	}
-
+	JuncaTestnetFlag = &cli.BoolFlag{
+		Name:     "juncatestnet",
+		Usage:    "JuncaTestnet network: pre-configured Proof-of-Stake Voting test network",
+		Category: flags.EthCategory,
+	}
+	JuncaFlag = &cli.BoolFlag{
+		Name:     "junca",
+		Usage:    "Junca network: pre-configured Proof-of-Stake Voting network",
+		Category: flags.EthCategory,
+	}
 	// Dev mode
 	DeveloperFlag = &cli.BoolFlag{
 		Name:     "dev",
@@ -982,15 +991,17 @@ var (
 var (
 	// TestnetFlags is the flag group of all built-in supported testnets.
 	TestnetFlags = []cli.Flag{
-		RopstenFlag,
-		RinkebyFlag,
-		GoerliFlag,
-		SepoliaFlag,
-		KilnFlag,
+		//RopstenFlag,
+		//RinkebyFlag,
+		//GoerliFlag,
+		//SepoliaFlag,
+		//KilnFlag,
+		JuncaTestnetFlag,
 	}
 	// NetworkFlags is the flag group of all built-in supported networks.
 	NetworkFlags = append([]cli.Flag{
-		MainnetFlag,
+		//MainnetFlag,
+		JuncaFlag,
 	}, TestnetFlags...)
 
 	// DatabasePathFlags is the flag group of all database path flags.
@@ -1022,6 +1033,12 @@ func MakeDataDir(ctx *cli.Context) string {
 		}
 		if ctx.Bool(KilnFlag.Name) {
 			return filepath.Join(path, "kiln")
+		}
+		if ctx.Bool(JuncaTestnetFlag.Name) {
+			return filepath.Join(path, "junca")
+		}
+		if ctx.Bool(JuncaFlag.Name) {
+			return filepath.Join(path, "junca")
 		}
 		return path
 	}
@@ -1079,6 +1096,10 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 		urls = params.GoerliBootnodes
 	case ctx.Bool(KilnFlag.Name):
 		urls = params.KilnBootnodes
+	case ctx.Bool(JuncaTestnetFlag.Name):
+		urls = params.JuncaTestnetBootnodes
+	case ctx.Bool(JuncaFlag.Name):
+		urls = params.JuncaBootnodes
 	}
 
 	// don't apply defaults if BootstrapNodes is already set
@@ -1537,6 +1558,10 @@ func SetDataDir(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "sepolia")
 	case ctx.Bool(KilnFlag.Name) && cfg.DataDir == node.DefaultDataDir():
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "kiln")
+	case ctx.Bool(JuncaTestnetFlag.Name) && cfg.DataDir == node.DefaultDataDir():
+		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "junca")
+	case ctx.Bool(JuncaFlag.Name) && cfg.DataDir == node.DefaultDataDir():
+		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "junca")
 	}
 }
 
@@ -1727,7 +1752,7 @@ func CheckExclusive(ctx *cli.Context, args ...interface{}) {
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// Avoid conflicting network flags
-	CheckExclusive(ctx, MainnetFlag, DeveloperFlag, RopstenFlag, RinkebyFlag, GoerliFlag, SepoliaFlag, KilnFlag)
+	CheckExclusive(ctx, MainnetFlag, DeveloperFlag, RopstenFlag, RinkebyFlag, GoerliFlag, SepoliaFlag, KilnFlag, JuncaTestnetFlag, JuncaFlag)
 	CheckExclusive(ctx, LightServeFlag, SyncModeFlag, "light")
 	CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 	if ctx.String(GCModeFlag.Name) == "archive" && ctx.Uint64(TxLookupLimitFlag.Name) != 0 {
@@ -1908,6 +1933,18 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		cfg.Genesis = core.DefaultKilnGenesisBlock()
 		SetDNSDiscoveryDefaults(cfg, params.KilnGenesisHash)
+	case ctx.Bool(JuncaTestnetFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 669
+		}
+		cfg.Genesis = core.DefaultJuncaTestnetGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.JuncaTestGenesisHash)
+	case ctx.Bool(JuncaFlag.Name):
+		if !ctx.IsSet(NetworkIdFlag.Name) {
+			cfg.NetworkId = 668
+		}
+		cfg.Genesis = core.DefaultJuncaGenesisBlock()
+		SetDNSDiscoveryDefaults(cfg, params.JuncaGenesisHash)
 	case ctx.Bool(DeveloperFlag.Name):
 		if !ctx.IsSet(NetworkIdFlag.Name) {
 			cfg.NetworkId = 1337
@@ -2147,18 +2184,22 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	var genesis *core.Genesis
 	switch {
-	case ctx.Bool(MainnetFlag.Name):
-		genesis = core.DefaultGenesisBlock()
-	case ctx.Bool(RopstenFlag.Name):
-		genesis = core.DefaultRopstenGenesisBlock()
-	case ctx.Bool(SepoliaFlag.Name):
-		genesis = core.DefaultSepoliaGenesisBlock()
-	case ctx.Bool(RinkebyFlag.Name):
-		genesis = core.DefaultRinkebyGenesisBlock()
-	case ctx.Bool(GoerliFlag.Name):
-		genesis = core.DefaultGoerliGenesisBlock()
-	case ctx.Bool(KilnFlag.Name):
-		genesis = core.DefaultKilnGenesisBlock()
+	//case ctx.Bool(MainnetFlag.Name):
+	//	genesis = core.DefaultGenesisBlock()
+	//case ctx.Bool(RopstenFlag.Name):
+	//	genesis = core.DefaultRopstenGenesisBlock()
+	//case ctx.Bool(SepoliaFlag.Name):
+	//	genesis = core.DefaultSepoliaGenesisBlock()
+	//case ctx.Bool(RinkebyFlag.Name):
+	//	genesis = core.DefaultRinkebyGenesisBlock()
+	//case ctx.Bool(GoerliFlag.Name):
+	//	genesis = core.DefaultGoerliGenesisBlock()
+	//case ctx.Bool(KilnFlag.Name):
+	//	genesis = core.DefaultKilnGenesisBlock()
+	case ctx.Bool(JuncaTestnetFlag.Name):
+		genesis = core.DefaultJuncaTestnetGenesisBlock()
+	case ctx.Bool(JuncaFlag.Name):
+		genesis = core.DefaultJuncaGenesisBlock()
 	case ctx.Bool(DeveloperFlag.Name):
 		Fatalf("Developer chains are ephemeral")
 	}
