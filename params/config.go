@@ -36,6 +36,7 @@ var (
 	GoerliGenesisHash    = common.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
 	KilnGenesisHash      = common.HexToHash("0x51c7fe41be669f69c45c33a56982cbde405313342d9e2b00d7c91a7b284dd4f8")
 	JuncaTestGenesisHash = common.HexToHash("0x6648cd131515e04b306909322ca60e3d5d2e356ec559d8566ab4b5f13e889236")
+	JuncaGenesisHash     = common.HexToHash("0xbbd912bb3d6e11b42308ddc4773275a503e0effadd57afc419bb8b69a0cce067")
 )
 
 // TrustedCheckpoints associates each known checkpoint with the genesis hash of
@@ -269,7 +270,7 @@ var (
 	}
 
 	JuncaTestnetChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(667),
+		ChainID:             big.NewInt(669),
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        big.NewInt(0),
 		DAOForkSupport:      true,
@@ -292,6 +293,33 @@ var (
 			TotalReward:    new(big.Int).SetBytes(common.FromHex("0x108b2a2c28029094000000")),
 			Foundation:     common.HexToAddress("0xe5daf2824b43d8b0c961225ab9992baf39f5f835"),
 			JuncaswapAdmin: common.HexToAddress("0xe5daf2824b43d8b0c961225ab9992baf39f5f835"),
+		},
+	}
+
+	JuncaChainConfig = &ChainConfig{
+		ChainID:             big.NewInt(668),
+		HomesteadBlock:      big.NewInt(0),
+		DAOForkBlock:        big.NewInt(0),
+		DAOForkSupport:      true,
+		EIP150Block:         big.NewInt(0),
+		EIP150Hash:          common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		MuirGlacierBlock:    big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0),
+		Posv: &PoSVConfig{
+			Period:         2,
+			Epoch:          900,
+			MinStaked:      new(big.Int).SetBytes(common.FromHex("0xa968163f0a57b400000")),
+			Reward:         new(big.Int).SetBytes(common.FromHex("0x70c1cc73b00c80000")),
+			TotalReward:    new(big.Int).SetBytes(common.FromHex("0x108b2a2c28029094000000")),
+			Foundation:     common.HexToAddress("0x0B3034983131cf12aC58cb240c8309FF5Fd9320a"),
+			JuncaswapAdmin: common.HexToAddress("0xb878a61f0ff6d223b863D2051D476f9eEF2c9756"),
 		},
 	}
 

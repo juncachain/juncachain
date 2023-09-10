@@ -359,6 +359,8 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 		return DefaultKilnGenesisBlock().Config
 	case ghash == params.JuncaTestGenesisHash:
 		return params.JuncaTestnetChainConfig
+	case ghash == params.JuncaGenesisHash:
+		return params.JuncaChainConfig
 	default:
 		return params.AllEthashProtocolChanges
 	}
@@ -509,6 +511,26 @@ func DefaultSepoliaGenesisBlock() *Genesis {
 func DefaultKilnGenesisBlock() *Genesis {
 	g := new(Genesis)
 	reader := strings.NewReader(KilnAllocData)
+	if err := json.NewDecoder(reader).Decode(g); err != nil {
+		panic(err)
+	}
+	return g
+}
+
+// DefaultJuncaTestnetGenesisBlock returns the Junca Testnet network genesis block.
+func DefaultJuncaTestnetGenesisBlock() *Genesis {
+	g := new(Genesis)
+	reader := strings.NewReader(JuncaTestnetAllocData)
+	if err := json.NewDecoder(reader).Decode(g); err != nil {
+		panic(err)
+	}
+	return g
+}
+
+// DefaultJuncaGenesisBlock returns the Junca network genesis block.
+func DefaultJuncaGenesisBlock() *Genesis {
+	g := new(Genesis)
+	reader := strings.NewReader(JuncaAllocData)
 	if err := json.NewDecoder(reader).Decode(g); err != nil {
 		panic(err)
 	}

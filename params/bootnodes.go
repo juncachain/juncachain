@@ -82,6 +82,18 @@ var KilnBootnodes = []string{
 	"enode://b74bd2e8a9f0c53f0c93bcce80818f2f19439fd807af5c7fbc3efb10130c6ee08be8f3aaec7dc0a057ad7b2a809c8f34dc62431e9b6954b07a6548cc59867884@164.92.140.200:30303",
 }
 
+var JuncaTestnetBootnodes = []string{
+	"enode://dd768fc00a2d2b9b2a2fe894a5b5137b37dee5c7e00e97b0ffa66efebb692b8fc9b6fec9ad13c346b0a895f33173ec15244e5319d9ae0d4638a31a062fba830c@18.182.134.146:30303",
+	"enode://ced14e687839ca86df71a1b10cc870ddd9915f08c0b299b6759e9926a0709a694b1d2f277106fd3d5f40d271c12c4067d85d8b1c2a0397d42a83ca915c00a38c@34.209.223.28:30303",
+	"enode://88074fab01b78b87cf3272d422488924916e83157cb64e9e16d9a842f6a291c2c2d13d36bdc6ce01f6e14873548bb914ce7d6c1c0dbb59a92877a02e66139642@52.209.146.144:30303",
+}
+
+var JuncaBootnodes = []string{
+	"enode://2b30ff80348aed4ac4f8698fa047390a70d5a7bbee4608c467b87902ea0dc71162b8e01aed5ffd08b15a6eb7945f1984223222d69312f762adfa4715f89172a7@35.75.230.9:30303",
+	"enode://65d41e17ecb26c4f453221405a701911345a79fc749595174d2b4d666746ac66c58c2e95f15b9aa6931ed55934ffd8fd7c40e32d918a0feb09b5fa2c6c53d949@52.27.218.188:30303",
+	"enode://a5ae4139b9199fc30c101206d45fa9661dc5eb6a7cbea7686be1badd86cb6d961f155d3f860763d963e1d5bf16ca01a5a530f91b6ca5e62bee61fec3d13ac5aa@54.229.90.59:30303",
+}
+
 var V5Bootnodes = []string{
 	// Teku team's bootnode
 	"enr:-KG4QOtcP9X1FbIMOe17QNMKqDxCpm14jcX5tiOE4_TyMrFqbmhPZHK_ZPG2Gxb1GE2xdtodOfx9-cgvNtxnRyHEmC0ghGV0aDKQ9aX9QgAAAAD__________4JpZIJ2NIJpcIQDE8KdiXNlY3AyNTZrMaEDhpehBDbZjM_L9ek699Y7vhUJ-eAdMyQW_Fil522Y0fODdGNwgiMog3VkcIIjKA",
@@ -118,6 +130,10 @@ func KnownDNSNetwork(genesis common.Hash, protocol string) string {
 		net = "goerli"
 	case SepoliaGenesisHash:
 		net = "sepolia"
+	case JuncaTestGenesisHash:
+		net = "juncatestnet"
+	case JuncaGenesisHash:
+		net = "junca"
 	default:
 		return ""
 	}
