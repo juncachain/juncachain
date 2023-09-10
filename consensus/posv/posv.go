@@ -504,6 +504,8 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 		header.Time = uint64(time.Now().Unix())
 	}
 
+	log.Info("[PoSV]Prepare", "number", number, "coinbase", header.Coinbase.Hex())
+
 	// Set secret
 	modNumber := header.Number.Uint64() % c.Config().Epoch
 	if c.Config().Epoch-modNumber == common.EpochBlockSecret &&
@@ -560,7 +562,7 @@ func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header,
 			epochBzLen := len(nextEpoch.ToBytes())
 			header.Extra = append(header.Extra, make([]byte, epochBzLen)...)
 			copy(header.Extra[extraVanity:], nextEpoch.ToBytes())
-			log.Info("[PoSV]HookReward", "number", header.Number)
+			log.Info("[PoSV]Finalize", "number", header.Number, "next epoch", nextEpoch.String())
 			rewards, err := c.HookReward(chain, state, header, nextEpoch)
 			if err != nil {
 				log.Crit("[PoSV]HookReward", "err", err)
@@ -626,7 +628,13 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		return err
 	}
 	if !epoch.IsM1(signer) {
-		return errors.Errorf("Etherbase %s is not M1 at %d", signer.Hex(), number)
+		return errors.Errorf("[PoSV]Etherbase %s is not M1 at %d", signer.Hex(), number)
+	}
+
+	var blockTime = header.Time
+	parent := chain.GetHeaderByNumber(number - 1)
+	if parent != nil {
+		blockTime = parent.Time + c.config.Period
 	}
 
 	// If we're amongst the recent signers, wait for the next block
@@ -638,14 +646,14 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 			if pSigner, err := c.Author(parent); err != nil {
 				return err
 			} else if pSigner == signer {
-				log.Info("[PoSV]Signed recently, must wait for others", "m1 length", epoch.M1Length())
+				log.Info("[PoSV]Signed recently, must wait for others", "m1cap", epoch.M1Length())
 				return nil
 			}
 		}
 	}
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
-	delay := time.Unix(int64(header.Time), 0).Sub(time.Now()) // nolint: gosimple
+	delay := time.Unix(int64(blockTime), 0).Sub(time.Now()) // nolint: gosimple
 	nextNumber := epoch.M1NextTurn(c.config.Epoch, number, signer)
 	if number == 1 && nextNumber != number {
 		log.Info("[PoSV]First block must be sealed in order")
@@ -655,6 +663,7 @@ func (c *PoSV) Seal(chain consensus.ChainHeaderReader, block *types.Block, resul
 		delay = delay + time.Duration((nextNumber-number)*c.config.Period)*time.Second + wiggleTime
 	}
 
+	log.Debug("[PoSV]Seal", "blockTime", blockTime, "delay", delay, "number", number, "next", nextNumber)
 	// Sign all the things!
 	sighash, err := signFn(accounts.Account{Address: signer}, accounts.MimetypePoSV, CliqueRLP(header))
 	if err != nil {
