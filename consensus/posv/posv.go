@@ -834,8 +834,8 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		}
 		return false
 	}
-	// If all candidates are penalied,penaly nothing
-	var allPenalized = true
+	// At least two nodes are reserved
+	var validCandidate int
 	for _, candidate := range candidates {
 		var candidateIsPenalized = false
 		for _, penalty := range penalties {
@@ -845,11 +845,10 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 			}
 		}
 		if !candidateIsPenalized {
-			allPenalized = false
-			break
+			validCandidate = validCandidate + 1
 		}
 	}
-	if allPenalized {
+	if validCandidate <= 2 {
 		penalized = func(address common.Address) bool {
 			return false
 		}

@@ -33,7 +33,7 @@ const (
 	MaxSigners              = 99
 	EpochBlockSecret        = 30
 	EpochBlockOpening       = 20
-	EpochBlockSealMissAllow = 2       // Allow miss seal the blocks each epoch
+	EpochBlockSealMissAllow = 9       // Allow miss seal the blocks each epoch
 	BuildInTxGas            = 1 << 18 // Fixed gas 262144
 )
 
