@@ -835,8 +835,21 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		return false
 	}
 	// If all candidates are penalied,penaly nothing
-	// todo bug 即使数量相同，但是内容不一定相同
-	if len(candidates)-len(penalties) == 0 {
+	var allPenalized = true
+	for _, candidate := range candidates {
+		var candidateIsPenalized = false
+		for _, penalty := range penalties {
+			if candidate.Address == penalty {
+				candidateIsPenalized = true
+				break
+			}
+		}
+		if !candidateIsPenalized {
+			allPenalized = false
+			break
+		}
+	}
+	if allPenalized {
 		penalized = func(address common.Address) bool {
 			return false
 		}

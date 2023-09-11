@@ -23,7 +23,6 @@ func (c *PoSV) HookGetCandidates(state *state.StateDB) MasterNodes {
 	candidates := contracts.GetCandidatesFromState(state)
 	for _, v := range candidates {
 		// when candidate resign,got zero address
-		// todo : affect  testnet
 		if v == common.ZeroAddress {
 			continue
 		}
