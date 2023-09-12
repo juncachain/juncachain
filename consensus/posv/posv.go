@@ -429,13 +429,13 @@ func (c *PoSV) verifySeal(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	// Signer Prevent Signer from preempting blocks
-	if parent := chain.GetHeader(header.ParentHash, number-1); parent != nil && epoch != nil {
-		nextSealBlock := epoch.M1NextTurn(c.config.Epoch, number, signer)
-		nextSealTime := parent.Time + (nextSealBlock-number)*c.config.Period
-		if header.Time < nextSealTime {
-			return errors.New("signed timeout not reached")
-		}
-	}
+	//if parent := chain.GetHeader(header.ParentHash, number-1); parent != nil && epoch != nil {
+	//	nextSealBlock := epoch.M1NextTurn(c.config.Epoch, number, signer)
+	//	nextSealTime := parent.Time + (nextSealBlock-number)*c.config.Period
+	//	if header.Time < nextSealTime {
+	//		return errors.New("signed timeout not reached")
+	//	}
+	//}
 
 	return nil
 }
