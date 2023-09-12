@@ -70,7 +70,8 @@ func (c *PoSV) HookPenalty(chain consensus.ChainHeaderReader, number uint64) ([]
 	var penalties = make([]common.Address, 0)
 	if it, err := sealermiss.IterCh(); err == nil {
 		for rec := range it.Records() {
-			if rec.Val.(int) > common.EpochBlockSealMissAllow {
+			if rec.Val.(int) > int(c.config.Epoch)/lastEpoch.M1Length()/10 &&
+				rec.Val.(int) > common.EpochBlockSealMissAllow {
 				penalties = append(penalties, rec.Key.(common.Address))
 			}
 		}
