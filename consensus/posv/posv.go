@@ -834,23 +834,32 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		}
 		return false
 	}
-	// At least two nodes are reserved
-	var validCandidate int
-	for _, candidate := range candidates {
-		var candidateIsPenalized = false
-		for _, penalty := range penalties {
-			if candidate.Address == penalty {
-				candidateIsPenalized = true
-				break
+	if c.chainID.Cmp(big.NewInt(667)) == 0 && number < 100000 {
+		// If all candidates are penalied,penaly nothing
+		if len(candidates)-len(penalties) == 0 {
+			penalized = func(address common.Address) bool {
+				return false
 			}
 		}
-		if !candidateIsPenalized {
-			validCandidate = validCandidate + 1
+	} else {
+		// At least two nodes are reserved
+		var validCandidate int
+		for _, candidate := range candidates {
+			var candidateIsPenalized = false
+			for _, penalty := range penalties {
+				if candidate.Address == penalty {
+					candidateIsPenalized = true
+					break
+				}
+			}
+			if !candidateIsPenalized {
+				validCandidate = validCandidate + 1
+			}
 		}
-	}
-	if validCandidate <= 2 {
-		penalized = func(address common.Address) bool {
-			return false
+		if validCandidate <= 2 {
+			penalized = func(address common.Address) bool {
+				return false
+			}
 		}
 	}
 
