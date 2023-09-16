@@ -548,34 +548,32 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
 	if header.Number.Uint64()%c.config.Epoch == 0 {
-		number := header.Number.Uint64()
-		{
-			// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
-			if header.Coinbase == common.ZeroAddress {
-				return
-			}
-			nextEpoch, err := c.makeEpoch(chain, state, number)
-			if err != nil {
-				return
-			}
-			epochBzLen := len(nextEpoch.ToBytes())
-			header.Extra = append(header.Extra, make([]byte, epochBzLen)...)
-			copy(header.Extra[extraVanity:], nextEpoch.ToBytes())
-			log.Info("[PoSV]Finalize", "number", header.Number, "next epoch", nextEpoch.String())
-			rewards, err := c.HookReward(chain, state, header, nextEpoch)
-			if err != nil {
-				log.Crit("[PoSV]HookReward", "err", err)
-			}
-
-			data, err := json.MarshalIndent(rewards, "", "  ")
-			if err == nil {
-				err = os.WriteFile(filepath.Join(c.config.InstanceDir, "epoch", header.Number.String()+"_epoch.json"), data, 0644)
-			}
-			if err != nil {
-				log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
-			}
+		// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
+		if header.Coinbase == common.ZeroAddress {
+			return
 		}
 
+		// generate extra data
+		nextEpoch, err := c.makeEpoch(chain, state, header)
+		if err != nil {
+			return
+		}
+		epochBzLen := len(nextEpoch.ToBytes())
+		header.Extra = append(header.Extra, make([]byte, epochBzLen)...)
+		copy(header.Extra[extraVanity:], nextEpoch.ToBytes())
+		log.Info("[PoSV]Finalize", "number", header.Number, "next epoch", nextEpoch.String())
+
+		rewards, err := c.HookReward(chain, state, header, nextEpoch)
+		if err != nil {
+			log.Crit("[PoSV]HookReward", "err", err)
+		}
+		data, err := json.MarshalIndent(rewards, "", "  ")
+		if err == nil {
+			err = os.WriteFile(filepath.Join(c.config.InstanceDir, "epoch", header.Number.String()+"_epoch.json"), data, 0644)
+		}
+		if err != nil {
+			log.Error("Error when save reward info ", "number", header.Number, "hash", header.Hash().Hex(), "err", err)
+		}
 	}
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
@@ -804,19 +802,14 @@ func (c *PoSV) getEpoch(chain consensus.ChainHeaderReader, checkpoint uint64) (*
 }
 
 // makeEpoch generate epoch data and return it, number must be checkpoint
-func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB, number uint64) (*Epoch, error) {
+func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB, header *types.Header) (*Epoch, error) {
 	// Generate the next epoch
 	epoch := new(Epoch)
-	epoch.Checkpoint = number
-	epoch.Reward = CalcReward(c.config, number)
-
-	// Must shift block. number may be not sealed
-	candidates := c.HookGetCandidates(state)
-
-	sort.Sort(candidates)
+	epoch.Checkpoint = header.Number.Uint64()
+	epoch.Reward = CalcReward(c.config, header.Number.Uint64())
 
 	// Get penalty list,penalties is sorted. number may be not sealed
-	penalties, err := c.HookPenalty(chain, number-1)
+	penalties, err := c.HookPenalty(chain, header.Number.Uint64()-1)
 	if err != nil {
 		log.Error("[PoSV]HookPenalty", "err", err)
 		return nil, err
@@ -828,6 +821,18 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		log.Info("[PoSV]HookPenalty", "penalized", v.Address.Hex(), "miss", v.Miss)
 	}
 
+	// blockSigners contains the number of blocks signed by the candidate in the previous epoch
+	blockSigners, err := c.HookGetBlockSigners(chain, state, header)
+	if err != nil {
+		return nil, err
+	}
+
+	lastCheckpoint := c.LastCheckpoint(header.Number.Uint64())
+	lastEpoch, err := c.GetEpoch(chain, lastCheckpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	penalized := func(address common.Address) bool {
 		for _, v := range penalties {
 			if v.Address == address {
@@ -836,51 +841,44 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		}
 		return false
 	}
-	if c.chainID.Cmp(big.NewInt(667)) == 0 && number < 100000 {
-		// If all candidates are penalied,penaly nothing
-		if len(candidates)-len(penalties) == 0 {
-			penalized = func(address common.Address) bool {
+
+	canRecover := func(address common.Address) bool {
+		// If the candidate was penalized in the previous epoch,
+		// the penalty can only be lifted by signing enough blocks in the previous epoch
+		shouldSign := int(c.config.Epoch) * 2 / lastEpoch.M2Length()
+		for _, v := range lastEpoch.Penalties {
+			if v.Address == address && blockSigners[address] < shouldSign*5/10 {
 				return false
 			}
 		}
-	} else {
-		// At least two nodes are reserved
-		var validCandidate int
-		for _, candidate := range candidates {
-			var candidateIsPenalized = false
-			for _, penalty := range penalties {
-				if candidate.Address == penalty.Address {
-					candidateIsPenalized = true
-					break
-				}
-			}
-			if !candidateIsPenalized {
-				validCandidate = validCandidate + 1
-			}
-		}
-		if validCandidate <= 2 {
-			penalized = func(address common.Address) bool {
-				return false
-			}
-		}
+		return true
 	}
 
-	// Max 150 masterNodes
-	var masterNodes []common.Address
-	for i, candidate := range candidates {
+	candidates := c.HookGetCandidates(state)
+	sort.Sort(candidates)
+
+	// Generate m1list and m2list
+	var m2list []common.Address
+	for _, candidate := range candidates {
+		// Only the top 150 candidates with the highest number of votes can become M2
+		if len(m2list) < common.MaxMasternodes {
+			m2list = append(m2list, candidate.Address)
+		}
+		// penalized candidate can be M2,not can be M1
 		if penalized(candidate.Address) {
 			continue
 		}
-		if i < common.MaxMasternodes {
-			masterNodes = append(masterNodes, candidate.Address)
-		}
-		if i < common.MaxSigners {
+		if epoch.M1s.Len() < common.MaxSigners && canRecover(candidate.Address) {
 			epoch.M1s = append(epoch.M1s, MasterNode{Address: candidate.Address, Stake: candidate.Stake})
 		}
 	}
+	if epoch.M1s.Len() < 2 {
+		// penality nothing
+		epoch.M1s = candidates
+	}
 
-	// Randomize masterNodes. number may be not sealed
-	m2s, err := c.HookRandomizeSigners(state, masterNodes)
+	// Randomize m2list
+	m2s, err := c.HookRandomizeSigners(state, m2list)
 	if err != nil {
 		log.Error("[PoSV]HookRandomizeSigners", "err", err)
 		return nil, err
