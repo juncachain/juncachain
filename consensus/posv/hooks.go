@@ -100,18 +100,26 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	if number == 0 || number%c.Config().Epoch != 0 {
 		return nil, nil
 	}
-	type Stat struct {
-		Address common.Address `json:"address"`
-		Owner   common.Address `json:"owner"` // for candidate
+	type Candidate struct {
+		Address common.Address `json:"-"`
+		Owner   common.Address `json:"owner"`
 		Cap     *big.Int       `json:"cap"`
 		Reward  *big.Int       `json:"reward"`
 	}
+
+	type Voter struct {
+		Address   common.Address `json:"-"`
+		Candidate common.Address `json:"candidate"`
+		Cap       *big.Int       `json:"cap"`
+		Reward    *big.Int       `json:"reward"`
+	}
+
 	var (
 		epochStat         = make(map[string]interface{})
 		rewards           = make(map[string]interface{})
-		m1Stat            = make(map[common.Address]*Stat)
-		m2Stat            = make(map[common.Address]*Stat)
-		voterStat         = make(map[common.Address]*Stat)
+		m1Stat            = make(map[common.Address]*Candidate)
+		m2Stat            = make(map[common.Address]*Candidate)
+		voterStat         = make(map[common.Address][]Voter)
 		totalCap          = new(big.Int)
 		totalSignedBlocks int
 		totalSealedBlocks int
@@ -154,17 +162,12 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	for sealer, count := range sealers {
 		totalSealedBlocks += count
 		owner := contracts.GetCandidateOwnerFromState(stateBlock, sealer)
-		m1Stat[sealer] = &Stat{Address: sealer, Owner: owner, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
+		m1Stat[sealer] = &Candidate{Address: sealer, Owner: owner, Cap: new(big.Int).SetInt64(int64(count)), Reward: new(big.Int)}
 		voters := contracts.GetVotersFromState(stateBlock, sealer)
 		for _, v := range voters {
-			if voterStat[v] == nil {
-				voterStat[v] = &Stat{Address: v, Cap: new(big.Int), Reward: new(big.Int)}
-			}
-			cap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
-			totalCap = new(big.Int).Add(totalCap, cap)
-			if st, ok := voterStat[v]; ok {
-				st.Cap = new(big.Int).Add(st.Cap, cap)
-			}
+			voterCap := contracts.GetVoterCapFromState(stateBlock, sealer, v)
+			voterStat[v] = append(voterStat[v], Voter{Address: v, Candidate: sealer, Cap: voterCap, Reward: new(big.Int)})
+			totalCap = new(big.Int).Add(totalCap, voterCap)
 		}
 	}
 
@@ -175,7 +178,7 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 			st.Cap = new(big.Int).Add(st.Cap, big.NewInt(int64(signCount)))
 		} else {
 			owner := contracts.GetCandidateOwnerFromState(stateBlock, signer)
-			m2Stat[signer] = &Stat{Address: signer, Owner: owner, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
+			m2Stat[signer] = &Candidate{Address: signer, Owner: owner, Cap: big.NewInt(int64(signCount)), Reward: new(big.Int)}
 		}
 	}
 
@@ -211,10 +214,12 @@ func (c *PoSV) HookReward(chain consensus.ChainHeaderReader, stateBlock *state.S
 	// Calc and rewards to voters
 	rewardVoter := new(big.Int).Mul(currentEpochRewards, new(big.Int).SetInt64(common.RewardVoterPercent))
 	rewardVoter = new(big.Int).Div(rewardVoter, new(big.Int).SetInt64(100))
-	for _, v := range voterStat {
-		v.Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
-		if v.Reward.Cmp(new(big.Int)) > 0 {
-			stateBlock.AddBalance(v.Address, v.Reward)
+	for _, vs := range voterStat {
+		for i, v := range vs {
+			vs[i].Reward = new(big.Int).Div(new(big.Int).Mul(rewardVoter, v.Cap), totalCap)
+			if vs[i].Reward.Cmp(new(big.Int)) > 0 {
+				stateBlock.AddBalance(v.Address, vs[i].Reward)
+			}
 		}
 	}
 	rewards["voters"] = voterStat
