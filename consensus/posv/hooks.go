@@ -35,7 +35,7 @@ func (c *PoSV) HookGetCandidates(state *state.StateDB) MasterNodes {
 	return ms
 }
 
-func (c *PoSV) HookPenalty(chain consensus.ChainHeaderReader, number uint64) ([]common.Address, error) {
+func (c *PoSV) HookPenalty(chain consensus.ChainHeaderReader, number uint64) (Penalties, error) {
 	lastCheckpoint := c.LastCheckpoint(number)
 	lastEpoch, err := c.GetEpoch(chain, lastCheckpoint)
 	if err != nil {
@@ -67,12 +67,15 @@ func (c *PoSV) HookPenalty(chain consensus.ChainHeaderReader, number uint64) ([]
 		}
 	}
 
-	var penalties = make([]common.Address, 0)
+	var penalties = make(Penalties, 0)
 	if it, err := sealermiss.IterCh(); err == nil {
 		for rec := range it.Records() {
 			if rec.Val.(int) > int(c.config.Epoch)/lastEpoch.M1Length()/10 &&
 				rec.Val.(int) > common.EpochBlockSealMissAllow {
-				penalties = append(penalties, rec.Key.(common.Address))
+				penalties = append(penalties, Penalty{
+					Address: rec.Key.(common.Address),
+					Miss:    big.NewInt(int64(rec.Val.(int))),
+				})
 			}
 		}
 	}

@@ -45,7 +45,10 @@ func TestEncodeDecode(t *testing.T) {
 		Address: common.BigToAddress(big.NewInt(1)),
 		Stake:   big.NewInt(50000),
 	})
-	extra.Epoch.Penalties = append(extra.Epoch.Penalties, common.BigToAddress(big.NewInt(2)))
+	extra.Epoch.Penalties = append(extra.Epoch.Penalties, Penalty{
+		Address: common.BigToAddress(big.NewInt(2)),
+		Miss:    big.NewInt(1),
+	})
 	b := extra.ToBytes()
 
 	var newExtra Extra
@@ -61,7 +64,7 @@ func TestEncodeDecode(t *testing.T) {
 	if new(big.Int).SetBytes(newExtra.Epoch.M1s[0].Address.Bytes()).Cmp(big.NewInt(1)) != 0 {
 		t.Fatal("Validators not equal")
 	}
-	if new(big.Int).SetBytes(newExtra.Epoch.Penalties[0].Bytes()).Cmp(big.NewInt(2)) != 0 {
+	if new(big.Int).SetBytes(newExtra.Epoch.Penalties[0].Address.Bytes()).Cmp(big.NewInt(2)) != 0 {
 		t.Fatal("Penalties not equal")
 	}
 }

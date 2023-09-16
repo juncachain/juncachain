@@ -25,6 +25,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -509,7 +510,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	// Set secret
 	modNumber := header.Number.Uint64() % c.Config().Epoch
 	if c.Config().Epoch-modNumber == common.EpochBlockSecret &&
-		c.HookSetRandomizeSecret != nil &&
 		epoch.IsM2(signer) {
 		log.Info("[PoSV]Is number to set secret", "number", header.Number.Uint64(), "signer", signer)
 		if err := c.HookSetRandomizeSecret(signer, header); err != nil {
@@ -520,7 +520,6 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 
 	// Set opening
 	if c.Config().Epoch-modNumber == common.EpochBlockOpening &&
-		c.HookSetRandomizeOpening != nil &&
 		epoch.IsM2(signer) {
 		log.Info("[PoSV]Is number to set opening", "number", header.Number.Uint64(), "signer", signer)
 		if err := c.HookSetRandomizeOpening(signer, header); err != nil {
@@ -529,7 +528,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 	}
 
 	// Sign parent block
-	if c.HookBlockSign != nil && epoch.IsM2(signer) {
+	if epoch.IsM2(signer) {
 		if m2s := epoch.M2(c.config.Epoch, parent.Number.Uint64()); len(m2s) > 0 {
 			for _, m2 := range m2s {
 				if m2 == signer {
@@ -548,7 +547,7 @@ func (c *PoSV) Prepare(chain consensus.ChainHeaderReader, header *types.Header) 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *PoSV) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) {
-	if c.HookReward != nil && header.Number.Uint64()%c.config.Epoch == 0 {
+	if header.Number.Uint64()%c.config.Epoch == 0 {
 		number := header.Number.Uint64()
 		{
 			// On Junca restart,coinbase is ZeroAddress,node rpc not start yet
@@ -814,21 +813,24 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 	// Must shift block. number may be not sealed
 	candidates := c.HookGetCandidates(state)
 
+	sort.Sort(candidates)
+
 	// Get penalty list,penalties is sorted. number may be not sealed
 	penalties, err := c.HookPenalty(chain, number-1)
 	if err != nil {
 		log.Error("[PoSV]HookPenalty", "err", err)
 		return nil, err
 	}
-	epoch.Penalties = make([]common.Address, len(penalties))
+	sort.Sort(penalties)
+	epoch.Penalties = make(Penalties, len(penalties))
 	for i, v := range penalties {
 		epoch.Penalties[i] = v
-		log.Info("[PoSV]HookPenalty", "penalized", v.Hex())
+		log.Info("[PoSV]HookPenalty", "penalized", v.Address.Hex(), "miss", v.Miss)
 	}
 
 	penalized := func(address common.Address) bool {
 		for _, v := range penalties {
-			if v == address {
+			if v.Address == address {
 				return true
 			}
 		}
@@ -847,7 +849,7 @@ func (c *PoSV) makeEpoch(chain consensus.ChainHeaderReader, state *state.StateDB
 		for _, candidate := range candidates {
 			var candidateIsPenalized = false
 			for _, penalty := range penalties {
-				if candidate.Address == penalty {
+				if candidate.Address == penalty.Address {
 					candidateIsPenalized = true
 					break
 				}

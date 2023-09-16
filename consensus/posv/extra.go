@@ -53,6 +53,33 @@ func (ms MasterNodes) Swap(i, j int) {
 	ms[i], ms[j] = ms[j], ms[i]
 }
 
+type Penalty struct {
+	Address common.Address `json:"address"`
+	Miss    *big.Int       `json:"miss"`
+}
+
+type Penalties []Penalty
+
+func (ps Penalties) Len() int {
+	return len(ps)
+}
+
+func (ps Penalties) Less(i, j int) bool {
+	cmp := ps[i].Miss.Cmp(ps[j].Miss)
+	if cmp > 0 {
+		return true
+	}
+
+	if cmp == 0 && bytes.Compare(ps[i].Address[:], ps[j].Address[:]) < 0 {
+		return true
+	}
+	return false
+}
+
+func (ps Penalties) Swap(i, j int) {
+	ps[i], ps[j] = ps[j], ps[i]
+}
+
 type Extra struct {
 	Vanity    [extraVanity]byte `json:"vanity"`
 	Epoch     Epoch             `json:"epoch"`
@@ -83,9 +110,9 @@ func (e *Extra) ToBytes() []byte {
 type Epoch struct {
 	Checkpoint uint64           `json:"checkpoint"`
 	M1s        MasterNodes      `json:"m1s"` // max 99
-	M2s        []common.Address `json:"m2s"` // max 150
+	M2s        []common.Address `json:"m2s"` // max 150,random
 	Reward     *big.Int         `json:"reward"`
-	Penalties  []common.Address `json:"penalties"`
+	Penalties  Penalties        `json:"penalties"`
 }
 
 func (e *Epoch) FromBytes(b []byte) error {
