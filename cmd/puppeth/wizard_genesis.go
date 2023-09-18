@@ -558,7 +558,7 @@ func deployJRC21IssuerContract(genesisAlloc core.GenesisAlloc) error {
 	transactOpts, _ := bind.NewKeyedTransactorWithChainID(pKey, big.NewInt(1337))
 	transactOpts.GasLimit = 30000000
 
-	contractAddr, _, err := jrc21issuer.DeployJRC21Issuer(transactOpts, contractBackend, big.NewInt(common.BuildInTxGas))
+	contractAddr, _, err := jrc21issuer.DeployJRC21Issuer(transactOpts, contractBackend, big.NewInt(common.BuildInTxGas*params.GWei))
 	if err != nil {
 		log.Error("Can't DeployJRC21Issuer", "err", err)
 		return err
