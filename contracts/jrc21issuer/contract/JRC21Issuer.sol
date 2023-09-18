@@ -2729,7 +2729,7 @@ contract JRC21Issuer{
             decimals_,
             initialAccount,
             initialBalance,
-            address(this),
+            msg.sender,
             minFee);
         address token = address(_token);
         _tokens.push(token);
@@ -2749,7 +2749,7 @@ contract JRC21Issuer{
             name,
             symbol,
             decimals_,
-            address(this),
+            msg.sender,
             minFee);
         address token = address(_token);
         _tokens.push(token);
@@ -2759,7 +2759,7 @@ contract JRC21Issuer{
     }
 
     function charge(address token) public payable {
-        require(msg.value > 0,"Cannot rechage 0");
+        require(msg.value > 0,"Cannot recharge 0");
         _gasLefts[token] = _gasLefts[token].add(msg.value);
         emit Charge(msg.sender, token, msg.value);
     }
@@ -2804,7 +2804,7 @@ contract JRC21 is AccessControlEnumerable{
         address issuer_,
         uint256 minFee_
     ) {
-        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _setupRole(DEFAULT_ADMIN_ROLE, issuer_);
         _issuer = issuer_;
         _minFee = minFee_;
     }
@@ -2850,8 +2850,8 @@ contract JRC21PresetFixed is JRC21,ERC20,ERC20Permit,ERC20Pausable{
         uint256 minFee
     ) ERC20(name, symbol) ERC20Permit(name) JRC21(issuer,minFee) {
         _decimals = decimals_;
-        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-        _setupRole(PAUSER_ROLE, _msgSender());
+        _setupRole(DEFAULT_ADMIN_ROLE, issuer);
+        _setupRole(PAUSER_ROLE, issuer);
         _mint(initialAccount, initialBalance);
     }
 
@@ -2890,9 +2890,9 @@ contract JRC21PresetMinter is JRC21,ERC20,ERC20Permit,ERC20Burnable,ERC20Pausabl
         uint256 minFee
     ) ERC20(name, symbol) ERC20Permit(name) JRC21(issuer,minFee) {
         _decimals = decimals_;
-        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-        _setupRole(MINTER_ROLE, _msgSender());
-        _setupRole(PAUSER_ROLE, _msgSender());
+        _setupRole(DEFAULT_ADMIN_ROLE, issuer);
+        _setupRole(MINTER_ROLE, issuer);
+        _setupRole(PAUSER_ROLE, issuer);
     }
 
     function mint(address to, uint256 amount) public virtual {
